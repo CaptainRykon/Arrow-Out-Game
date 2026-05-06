@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 21767a612268dfa46aa2c872e7c942f6
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 345108
+  packageName: Arrow line removal game
+  packageVersion: 1.0.1
+  assetPath: Assets/QstarStudio/Arrow Game/Prefabs/Triangle.prefab
+  uploadId: 853488
