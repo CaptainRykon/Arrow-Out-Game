@@ -18,35 +18,17 @@ namespace ArrowGame
         [SerializeField] private string challengeTitlePrefix = "Weekly Challenge";
         [SerializeField] private string[] challengePatternNames = { "Star", "Duck", "Bolt", "Crown", "Leaf", "Rocket", "Moon" };
 
-        [Header("Menu Panels")]
-        [SerializeField] private GameObject challengeMenuPanel;
-        [SerializeField] private GameObject streakPanel;
-        [SerializeField] private GameObject countdownPanel;
-        [SerializeField] private GameObject challengeHudPanel;
-        [SerializeField] private GameObject leaderboardPanel;
-
-        [Header("Menu UI")]
-        [SerializeField] private Button challengePlayButton;
-        [SerializeField] private Button openStreakButton;
-        [SerializeField] private Button closeStreakButton;
-        [SerializeField] private TextMeshProUGUI challengeTitleText;
-        [SerializeField] private TextMeshProUGUI challengePatternText;
-        [SerializeField] private TextMeshProUGUI cycleTimerText;
-        [SerializeField] private TextMeshProUGUI nextChanceTimerText;
-        [SerializeField] private TextMeshProUGUI challengeStatusText;
-        [SerializeField] private TextMeshProUGUI streakSummaryText;
-
         [Header("Countdown")]
+        [SerializeField] private GameObject countdownPanel;
         [SerializeField] private TextMeshProUGUI countdownText;
         [SerializeField] private float countdownStepDuration = 0.8f;
 
         [Header("Run HUD")]
+        [SerializeField] private GameObject challengeHudPanel;
         [SerializeField] private TextMeshProUGUI runTimerText;
 
-        [Header("Streak")]
-        [SerializeField] private ChallengeStreakDayView[] streakDayViews;
-
         [Header("Leaderboard")]
+        [SerializeField] private GameObject leaderboardPanel;
         [SerializeField] private TextMeshProUGUI leaderboardTitleText;
         [SerializeField] private TextMeshProUGUI leaderboardPlayerBestText;
         [SerializeField] private TextMeshProUGUI finalScoreText;
@@ -58,6 +40,7 @@ namespace ArrowGame
         private float runTimerStartRealtime;
         private bool hasPendingScoreSubmission;
         private float pendingCompletionSeconds;
+        private bool challengeStarted;
 
         private void Awake()
         {
@@ -66,14 +49,14 @@ namespace ArrowGame
 
             WireButtons();
             PrepareInitialPanels();
-            RefreshAllUi();
+            RefreshLeaderboardUi();
         }
 
         private void Start()
         {
-            if (challengeMenuPanel == null)
-                StartChallengeFlow();
+            StartChallengeFlow();
         }
+
         private void OnEnable()
         {
             if (arrowGameManager != null)
@@ -95,8 +78,6 @@ namespace ArrowGame
 
         private void Update()
         {
-            RefreshDynamicTimerUi();
-
             if (!runTimerActive)
                 return;
 
@@ -107,25 +88,17 @@ namespace ArrowGame
 
         public void StartChallengeFlow()
         {
+            if (challengeStarted)
+                return;
+
             if (!GameDataStore.CanPlayChallengeToday(DateTime.UtcNow))
             {
-                RefreshAllUi();
+                ReturnToMenu();
                 return;
             }
 
+            challengeStarted = true;
             StartCoroutine(StartChallengeFlowCO());
-        }
-
-        public void OpenStreakPanel()
-        {
-            if (streakPanel != null)
-                streakPanel.SetActive(true);
-        }
-
-        public void CloseStreakPanel()
-        {
-            if (streakPanel != null)
-                streakPanel.SetActive(false);
         }
 
         public void ReturnToMenu()
@@ -151,17 +124,11 @@ namespace ArrowGame
         {
             DateTime nowUtc = DateTime.UtcNow;
             GameDataStore.MarkChallengeAttemptUsed(nowUtc);
-            RefreshAllUi();
 
-            if (challengeMenuPanel != null)
-                challengeMenuPanel.SetActive(false);
-            if (streakPanel != null)
-                streakPanel.SetActive(false);
             if (leaderboardPanel != null)
                 leaderboardPanel.SetActive(false);
             if (challengeHudPanel != null)
-                challengeHudPanel.SetActive(true);
-
+                challengeHudPanel.SetActive(false);
             if (countdownPanel != null)
                 countdownPanel.SetActive(true);
 
@@ -178,6 +145,9 @@ namespace ArrowGame
             if (arrowGameManager != null)
                 yield return arrowGameManager.BeginGameplayIntro();
 
+            if (challengeHudPanel != null)
+                challengeHudPanel.SetActive(true);
+
             runTimerStartRealtime = Time.realtimeSinceStartup;
             runTimerActive = true;
         }
@@ -187,6 +157,9 @@ namespace ArrowGame
             runTimerActive = false;
             pendingCompletionSeconds = Mathf.Max(0f, Time.realtimeSinceStartup - runTimerStartRealtime);
             hasPendingScoreSubmission = true;
+
+            if (challengeHudPanel != null)
+                challengeHudPanel.SetActive(false);
             if (leaderboardPanel == null && arrowGameManager != null)
                 leaderboardPanel = arrowGameManager.winUI;
             if (leaderboardPanel != null)
@@ -203,14 +176,11 @@ namespace ArrowGame
         private void HandleChallengeFailed()
         {
             runTimerActive = false;
-            RefreshAllUi();
+            ReturnToMenu();
         }
 
         private void WireButtons()
         {
-            RegisterButton(challengePlayButton, StartChallengeFlow);
-            RegisterButton(openStreakButton, OpenStreakPanel);
-            RegisterButton(closeStreakButton, CloseStreakPanel);
             RegisterButton(submitScoreButton, SubmitPendingScore);
             RegisterButton(leaderboardMainMenuButton, ReturnToMenu);
         }
@@ -219,82 +189,12 @@ namespace ArrowGame
         {
             if (countdownPanel != null)
                 countdownPanel.SetActive(false);
-            if (streakPanel != null)
-                streakPanel.SetActive(false);
             if (challengeHudPanel != null)
                 challengeHudPanel.SetActive(false);
             if (leaderboardPanel != null)
                 leaderboardPanel.SetActive(false);
-            if (challengeMenuPanel != null)
-                challengeMenuPanel.SetActive(true);
             if (submitScoreButton != null)
                 submitScoreButton.interactable = false;
-        }
-
-        private void RefreshAllUi()
-        {
-            DateTime nowUtc = DateTime.UtcNow;
-            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
-            string patternName = challengePatternNames.Length > 0 ? challengePatternNames[patternIndex] : $"Pattern {cycleIndex + 1}";
-
-            if (challengeTitleText != null)
-                challengeTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1}";
-            if (challengePatternText != null)
-                challengePatternText.text = patternName;
-
-            RefreshDynamicTimerUi();
-            RefreshStreakUi(nowUtc);
-            RefreshLeaderboardUi();
-        }
-
-        private void RefreshDynamicTimerUi()
-        {
-            DateTime nowUtc = DateTime.UtcNow;
-            bool canPlayToday = GameDataStore.CanPlayChallengeToday(nowUtc);
-
-            if (cycleTimerText != null)
-                cycleTimerText.text = FormatCountdown(GameDataStore.GetCurrentChallengeTimeRemaining(nowUtc));
-
-            if (nextChanceTimerText != null)
-            {
-                nextChanceTimerText.text = canPlayToday
-                    ? "Chance Ready"
-                    : FormatCountdown(GameDataStore.GetTimeUntilNextChallengeChance(nowUtc));
-            }
-
-            if (challengeStatusText != null)
-            {
-                challengeStatusText.text = canPlayToday
-                    ? "You have 1 chance available today."
-                    : "Today’s challenge chance is used. Come back when the timer resets.";
-            }
-
-            if (challengePlayButton != null)
-                challengePlayButton.interactable = canPlayToday;
-        }
-
-        private void RefreshStreakUi(DateTime nowUtc)
-        {
-            int currentDayIndex = GameDataStore.GetCurrentChallengeDayIndex(nowUtc);
-            int streakMask = GameDataStore.GetChallengeStreakMask(nowUtc);
-            int playedDayCount = 0;
-
-            int streakViewCount = streakDayViews != null ? streakDayViews.Length : 0;
-            for (int i = 0; i < streakViewCount; i++)
-            {
-                bool isPlayed = (streakMask & (1 << i)) != 0;
-                bool isCurrentDay = i == currentDayIndex;
-                bool isMissed = i < currentDayIndex && !isPlayed;
-                if (isPlayed)
-                    playedDayCount++;
-
-                if (streakDayViews[i] != null)
-                    streakDayViews[i].Bind(i + 1, isPlayed, isCurrentDay, isMissed);
-            }
-
-            if (streakSummaryText != null)
-                streakSummaryText.text = $"{playedDayCount}/{Mathf.Max(streakViewCount, 7)} days played this week";
         }
 
         private void RefreshLeaderboardUi()
@@ -303,9 +203,14 @@ namespace ArrowGame
             int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
             List<ChallengeLeaderboardEntryData> entries = GameDataStore.BuildLocalChallengeLeaderboard(nowUtc, Mathf.Max(leaderboardViewCount, 6));
             float playerBestTime = GameDataStore.GetChallengeBestTimeSeconds(nowUtc);
+            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
+            string patternName = challengePatternNames.Length > 0
+                ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
+                : $"Pattern {cycleIndex + 1}";
 
             if (leaderboardTitleText != null)
-                leaderboardTitleText.text = $"Cycle #{GameDataStore.GetCurrentChallengeCycleIndex(nowUtc) + 1} Leaderboard";
+                leaderboardTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1} - {patternName}";
 
             if (leaderboardPlayerBestText != null)
             {
@@ -323,16 +228,6 @@ namespace ArrowGame
                 if (leaderboardEntryViews[i] != null)
                     leaderboardEntryViews[i].Bind(entryData);
             }
-
-        }
-
-        private static string FormatCountdown(TimeSpan timeSpan)
-        {
-            if (timeSpan < TimeSpan.Zero)
-                timeSpan = TimeSpan.Zero;
-
-            int totalDays = Mathf.Max(0, timeSpan.Days);
-            return $"{totalDays:00}d {timeSpan.Hours:00}h {timeSpan.Minutes:00}m {timeSpan.Seconds:00}s";
         }
 
         private static string FormatTime(float seconds)
@@ -355,6 +250,3 @@ namespace ArrowGame
         }
     }
 }
-
-
-

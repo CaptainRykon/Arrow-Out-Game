@@ -57,6 +57,7 @@ namespace ArrowGame
         [SerializeField] private int baseBoardHeight = 26;
         [SerializeField] private int challengeBoardWidth = 18;
         [SerializeField] private int challengeBoardHeight = 26;
+        [SerializeField] private ChallengePatternLibrary challengePatternLibrary;
         [SerializeField] private int challengeSeedOffset;
         [SerializeField] private int boardGrowthStartLevel = 60;
         [SerializeField] private int boardGrowthInterval = 20;
@@ -144,7 +145,7 @@ namespace ArrowGame
                 levelSeed.Add(Random.Range(0, 10000));
 
             ConfigureSeedAndBoard(l);
-            FitBoardToCamera(LineGenerator.width, LineGenerator.height);
+            FitBoardToCameraFromCurrentBoard();
 
             // Use LineGenerator to generate the current level.
             LineGenerator.enabled = true;
@@ -427,11 +428,26 @@ namespace ArrowGame
             {
                 if (levelText != null)
                     levelText.text = string.Empty;
-                LineGenerator.width = challengeBoardWidth;
-                LineGenerator.height = challengeBoardHeight;
+
+                if (challengePatternLibrary == null)
+                    challengePatternLibrary = GetComponent<ChallengePatternLibrary>();
+
+                if (challengePatternLibrary != null && challengePatternLibrary.TryBuildCurrentWeeklyMask(out bool[,] challengeMask))
+                {
+                    LineGenerator.SetPlayableMask(challengeMask);
+                }
+                else
+                {
+                    LineGenerator.ClearPlayableMask();
+                    LineGenerator.width = challengeBoardWidth;
+                    LineGenerator.height = challengeBoardHeight;
+                }
+
                 Random.InitState(GameDataStore.GetCurrentChallengeSeed(System.DateTime.UtcNow, challengeSeedOffset));
                 return;
             }
+
+            LineGenerator.ClearPlayableMask();
 
             if (levelText != null)
                 levelText.text = "Level " + level;
@@ -445,15 +461,23 @@ namespace ArrowGame
                 restartButton.gameObject.SetActive(false);
         }
 
-        private void FitBoardToCamera(int boardWidth, int boardHeight)
+        private void FitBoardToCameraFromCurrentBoard()
+        {
+            LineGenerator.GetBoardBounds(out Vector2 minBounds, out Vector2 maxBounds);
+            FitBoardToCamera(minBounds, maxBounds);
+        }
+
+        private void FitBoardToCamera(Vector2 minBounds, Vector2 maxBounds)
         {
             Camera mainCamera = Camera.main;
             if (mainCamera == null || !mainCamera.orthographic)
                 return;
 
-            boardWorldMin = new Vector2(-boardWidth * 0.5f, -boardHeight * 0.5f);
-            boardWorldMax = new Vector2(boardWidth * 0.5f - 1f, boardHeight * 0.5f - 1f);
+            boardWorldMin = minBounds;
+            boardWorldMax = maxBounds;
 
+            float boardWidth = boardWorldMax.x - boardWorldMin.x + 1f;
+            float boardHeight = boardWorldMax.y - boardWorldMin.y + 1f;
             float halfHeightWithPadding = boardHeight * 0.5f + cameraBoardPadding;
             float halfWidthWithPadding = (boardWidth * 0.5f + cameraBoardPadding) / mainCamera.aspect;
             fittedCameraSize = Mathf.Max(halfHeightWithPadding, halfWidthWithPadding, minimumCameraSize);
@@ -930,3 +954,6 @@ namespace ArrowGame
         }
     }
 }
+
+
+

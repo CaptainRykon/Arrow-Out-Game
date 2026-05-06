@@ -48,34 +48,15 @@ namespace ArrowGame
             ChallengeUiRefs refs = new();
 
             RemoveGeneratedChallengeMenuPanel(canvasRoot);
-            refs.challengeMenuPanel = null;
-            refs.challengeHudPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge HUD Panel", false).gameObject;
             refs.countdownPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge Countdown Panel", false).gameObject;
-            refs.streakPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge Streak Panel", false).gameObject;
+            refs.challengeHudPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge HUD Panel", false).gameObject;
             refs.leaderboardPanel = gameManager.winUI != null ? gameManager.winUI : FindOrCreateFullScreenPanel(canvasRoot, "Challenge Leaderboard Panel", false).gameObject;
 
-                        BuildCountdownPanel(refs.countdownPanel.transform, refs);
+            BuildCountdownPanel(refs.countdownPanel.transform, refs);
             BuildHudPanel(refs.challengeHudPanel.transform, refs);
-            BuildStreakPanel(refs.streakPanel.transform, refs);
             BuildLeaderboardPanel(refs.leaderboardPanel.transform, refs);
 
             return refs;
-        }
-
-        private void BuildChallengeMenu(Transform panelRoot, ChallengeUiRefs refs)
-        {
-            RectTransform card = FindOrCreateCard(panelRoot, "Challenge Menu Card", new Vector2(820f, 1100f), panelColor);
-            VerticalLayoutGroup layout = EnsureVerticalLayout(card.gameObject, new RectOffset(44, 44, 52, 52), 22f);
-
-            CreateOrUpdateLabel(card, "Challenge Title", "Weekly Challenge #1", 52f, textPrimaryColor, out refs.challengeTitleText);
-            CreateOrUpdateLabel(card, "Pattern Name", "Pattern", 34f, accentColor, out refs.challengePatternText);
-            CreateOrUpdateLabel(card, "Cycle Timer", "07d 00h 00m 00s", 30f, textPrimaryColor, out refs.cycleTimerText);
-            CreateOrUpdateLabel(card, "Chance Text", "1 chance left", 28f, textPrimaryColor, out refs.challengeChanceText);
-            CreateOrUpdateLabel(card, "Next Chance Timer", "Chance Ready", 24f, textSecondaryColor, out refs.nextChanceTimerText);
-            CreateOrUpdateLabel(card, "Status Text", "You have 1 chance available today.", 24f, textSecondaryColor, out refs.challengeStatusText);
-
-            refs.streakButton = FindOrCreateButton(card, "Streak Button", "Streak", new Vector2(0f, 80f));
-            refs.challengePlayButton = FindOrCreateButton(card, "Challenge Play Button", "Play Challenge", new Vector2(0f, 92f));
         }
 
         private void BuildCountdownPanel(Transform panelRoot, ChallengeUiRefs refs)
@@ -94,51 +75,12 @@ namespace ArrowGame
             CreateOrUpdateLabel(timerHolder, "Run Timer", "00:00.000", 58f, textPrimaryColor, out refs.runTimerText);
         }
 
-        private void BuildStreakPanel(Transform panelRoot, ChallengeUiRefs refs)
-        {
-            RectTransform card = FindOrCreateCard(panelRoot, "Streak Popup Card", new Vector2(760f, 1040f), Color.white);
-            VerticalLayoutGroup layout = EnsureVerticalLayout(card.gameObject, new RectOffset(56, 56, 72, 72), 22f);
-
-            RectTransform flame = FindOrCreateCard(card, "Flame", new Vector2(220f, 220f), new Color(1f, 0.63f, 0.12f, 1f));
-            LayoutElement flameLayout = flame.gameObject.GetComponent<LayoutElement>() ?? flame.gameObject.AddComponent<LayoutElement>();
-            flameLayout.preferredWidth = 220f;
-            flameLayout.preferredHeight = 220f;
-
-            CreateOrUpdateLabel(card, "Streak Headline", "0 day streak", 52f, new Color(0.2f, 0.24f, 0.42f, 1f), out refs.streakHeadlineText);
-
-            RectTransform dayRow = FindOrCreateRect(card, "Streak Day Row");
-            LayoutElement rowLayout = dayRow.gameObject.GetComponent<LayoutElement>() ?? dayRow.gameObject.AddComponent<LayoutElement>();
-            rowLayout.preferredHeight = 150f;
-            HorizontalLayoutGroup rowGroup = dayRow.gameObject.GetComponent<HorizontalLayoutGroup>() ?? dayRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-            rowGroup.spacing = 10f;
-            rowGroup.childAlignment = TextAnchor.MiddleCenter;
-            rowGroup.childControlWidth = true;
-            rowGroup.childControlHeight = true;
-            rowGroup.childForceExpandWidth = true;
-            rowGroup.childForceExpandHeight = false;
-
-            refs.streakDayViews = new ChallengeStreakDayView[7];
-            for (int i = 0; i < refs.streakDayViews.Length; i++)
-            {
-                refs.streakDayViews[i] = FindOrCreateStreakDayView(dayRow, i);
-            }
-
-            CreateOrUpdateLabel(card, "Streak Summary", "Win a level to start your streak!", 26f, new Color(0.28f, 0.31f, 0.48f, 1f), out refs.streakSummaryText);
-
-            RectTransform spacer = FindOrCreateRect(card, "Bottom Spacer");
-            LayoutElement spacerLayout = spacer.gameObject.GetComponent<LayoutElement>() ?? spacer.gameObject.AddComponent<LayoutElement>();
-            spacerLayout.flexibleHeight = 1f;
-            spacerLayout.minHeight = 32f;
-
-            refs.closeStreakButton = FindOrCreateButton(card, "Close Streak Button", "Close", new Vector2(0f, 84f));
-        }
-
         private void BuildLeaderboardPanel(Transform panelRoot, ChallengeUiRefs refs)
         {
             RectTransform card = FindOrCreateCard(panelRoot, "Challenge Leaderboard Card", new Vector2(860f, 1200f), panelColor);
             VerticalLayoutGroup layout = EnsureVerticalLayout(card.gameObject, new RectOffset(44, 44, 44, 44), 18f);
 
-            CreateOrUpdateLabel(card, "Leaderboard Title", "Cycle #1 Leaderboard", 46f, textPrimaryColor, out refs.leaderboardTitleText);
+            CreateOrUpdateLabel(card, "Leaderboard Title", "Weekly Challenge #1", 46f, textPrimaryColor, out refs.leaderboardTitleText);
             CreateOrUpdateLabel(card, "Final Score", "00:00.000", 40f, accentColor, out refs.finalScoreText);
             CreateOrUpdateLabel(card, "Player Best", "Your Best: Not set yet", 28f, textSecondaryColor, out refs.leaderboardPlayerBestText);
 
@@ -146,58 +88,13 @@ namespace ArrowGame
             refs.leaderboardMainMenuButton = FindOrCreateButton(card, "Leaderboard Main Menu Button", "Main Menu", new Vector2(0f, 80f));
 
             RectTransform listRoot = FindOrCreateRect(card, "Leaderboard List");
-            VerticalLayoutGroup listLayout = EnsureVerticalLayout(listRoot.gameObject, new RectOffset(0, 0, 0, 0), 12f);
+            EnsureVerticalLayout(listRoot.gameObject, new RectOffset(0, 0, 0, 0), 12f);
             LayoutElement listRootLayout = listRoot.gameObject.GetComponent<LayoutElement>() ?? listRoot.gameObject.AddComponent<LayoutElement>();
             listRootLayout.flexibleHeight = 1f;
 
             refs.leaderboardEntryViews = new ChallengeLeaderboardEntryView[6];
             for (int i = 0; i < refs.leaderboardEntryViews.Length; i++)
-            {
                 refs.leaderboardEntryViews[i] = FindOrCreateLeaderboardEntry(listRoot, i);
-            }
-        }
-
-        private ChallengeStreakDayView FindOrCreateStreakDayView(Transform parent, int index)
-        {
-            RectTransform root = FindOrCreateRect(parent, $"Day {index + 1}");
-            LayoutElement rootLayout = root.gameObject.GetComponent<LayoutElement>() ?? root.gameObject.AddComponent<LayoutElement>();
-            rootLayout.preferredWidth = 90f;
-            rootLayout.preferredHeight = 130f;
-
-            VerticalLayoutGroup layout = root.gameObject.GetComponent<VerticalLayoutGroup>() ?? root.gameObject.AddComponent<VerticalLayoutGroup>();
-            layout.spacing = 10f;
-            layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childControlWidth = true;
-            layout.childControlHeight = false;
-            layout.childForceExpandWidth = true;
-            layout.childForceExpandHeight = false;
-
-            string dayShortName = index switch
-            {
-                0 => "Mo",
-                1 => "Tu",
-                2 => "We",
-                3 => "Th",
-                4 => "Fr",
-                5 => "Sa",
-                _ => "Su"
-            };
-
-            CreateOrUpdateLabel(root, "Day Label", dayShortName, 22f, textSecondaryColor, out TextMeshProUGUI dayLabel);
-
-            RectTransform bubble = FindOrCreateCard(root, "Day Bubble", new Vector2(72f, 72f), new Color(0.93f, 0.93f, 0.98f, 1f));
-            CreateOrUpdateLabel(bubble, "State Label", "Today", 16f, new Color(0.28f, 0.31f, 0.48f, 1f), out TextMeshProUGUI stateLabel);
-            GameObject playedMarker = FindOrCreateMarker(bubble, "Played Marker", "OK", 20f, Color.white);
-            GameObject currentMarker = FindOrCreateMarker(bubble, "Current Marker", "Now", 16f, Color.white);
-            playedMarker.SetActive(false);
-            currentMarker.SetActive(false);
-
-            ChallengeStreakDayView view = root.GetComponent<ChallengeStreakDayView>();
-            if (view == null)
-                view = root.gameObject.AddComponent<ChallengeStreakDayView>();
-
-            AssignStreakDayView(view, bubble.GetComponent<Image>(), dayLabel, stateLabel, playedMarker, currentMarker);
-            return view;
         }
 
         private ChallengeLeaderboardEntryView FindOrCreateLeaderboardEntry(Transform parent, int index)
@@ -234,34 +131,38 @@ namespace ArrowGame
             return view;
         }
 
+        private static void RemoveGeneratedChallengeMenuPanel(Transform canvasRoot)
+        {
+            RectTransform menuPanel = FindChildRect(canvasRoot, "Challenge Menu Panel");
+            if (menuPanel == null)
+                return;
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                UnityEditor.Undo.DestroyObjectImmediate(menuPanel.gameObject);
+                return;
+            }
+#endif
+
+            DestroyImmediate(menuPanel.gameObject);
+        }
+
         private static void AssignControllerReferences(ChallengeSceneController controller, ArrowGameManager gameManager, ChallengeUiRefs refs)
         {
 #if UNITY_EDITOR
             UnityEditor.SerializedObject serializedObject = new(controller);
             Assign(serializedObject, "arrowGameManager", gameManager);
-            Assign(serializedObject, "challengeMenuPanel", refs.challengeMenuPanel);
-            Assign(serializedObject, "streakPanel", refs.streakPanel);
             Assign(serializedObject, "countdownPanel", refs.countdownPanel);
-            Assign(serializedObject, "challengeHudPanel", refs.challengeHudPanel);
-            Assign(serializedObject, "leaderboardPanel", refs.leaderboardPanel);
-            Assign(serializedObject, "challengePlayButton", refs.challengePlayButton);
-            Assign(serializedObject, "openStreakButton", refs.streakButton);
-            Assign(serializedObject, "closeStreakButton", refs.closeStreakButton);
-            Assign(serializedObject, "challengeTitleText", refs.challengeTitleText);
-            Assign(serializedObject, "challengePatternText", refs.challengePatternText);
-            Assign(serializedObject, "cycleTimerText", refs.cycleTimerText);
-            Assign(serializedObject, "nextChanceTimerText", refs.nextChanceTimerText);
-            Assign(serializedObject, "challengeStatusText", refs.challengeStatusText);
-            Assign(serializedObject, "streakSummaryText", refs.streakSummaryText);
             Assign(serializedObject, "countdownText", refs.countdownText);
+            Assign(serializedObject, "challengeHudPanel", refs.challengeHudPanel);
             Assign(serializedObject, "runTimerText", refs.runTimerText);
-            Assign(serializedObject, "streakHeadlineText", refs.streakHeadlineText);
+            Assign(serializedObject, "leaderboardPanel", refs.leaderboardPanel);
             Assign(serializedObject, "leaderboardTitleText", refs.leaderboardTitleText);
             Assign(serializedObject, "leaderboardPlayerBestText", refs.leaderboardPlayerBestText);
             Assign(serializedObject, "finalScoreText", refs.finalScoreText);
             Assign(serializedObject, "submitScoreButton", refs.submitScoreButton);
             Assign(serializedObject, "leaderboardMainMenuButton", refs.leaderboardMainMenuButton);
-            AssignArray(serializedObject, "streakDayViews", refs.streakDayViews);
             AssignArray(serializedObject, "leaderboardEntryViews", refs.leaderboardEntryViews);
             serializedObject.ApplyModifiedPropertiesWithoutUndo();
 #endif
@@ -284,25 +185,6 @@ namespace ArrowGame
             property.arraySize = values != null ? values.Length : 0;
             for (int i = 0; i < property.arraySize; i++)
                 property.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
-        }
-#endif
-
-#if UNITY_EDITOR
-        private static void AssignStreakDayView(
-            ChallengeStreakDayView view,
-            Image background,
-            TextMeshProUGUI dayLabel,
-            TextMeshProUGUI stateLabel,
-            GameObject playedMarker,
-            GameObject currentMarker)
-        {
-            UnityEditor.SerializedObject serializedObject = new(view);
-            Assign(serializedObject, "background", background);
-            Assign(serializedObject, "dayLabel", dayLabel);
-            Assign(serializedObject, "stateLabel", stateLabel);
-            Assign(serializedObject, "playedMarker", playedMarker);
-            Assign(serializedObject, "currentMarker", currentMarker);
-            serializedObject.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void AssignLeaderboardEntryView(
@@ -329,23 +211,6 @@ namespace ArrowGame
         }
 #endif
 
-        
-        private static void RemoveGeneratedChallengeMenuPanel(Transform canvasRoot)
-        {
-            RectTransform menuPanel = FindChildRect(canvasRoot, "Challenge Menu Panel");
-            if (menuPanel == null)
-                return;
-
-#if UNITY_EDITOR
-            if (!Application.isPlaying)
-            {
-                UnityEditor.Undo.DestroyObjectImmediate(menuPanel.gameObject);
-                return;
-            }
-#endif
-
-            DestroyImmediate(menuPanel.gameObject);
-        }
         private RectTransform FindOrCreateFullScreenPanel(Transform parent, string name, bool active)
         {
             RectTransform rect = FindChildRect(parent, name);
@@ -515,34 +380,17 @@ namespace ArrowGame
 
         private sealed class ChallengeUiRefs
         {
-            public GameObject challengeMenuPanel;
-            public GameObject streakPanel;
             public GameObject countdownPanel;
             public GameObject challengeHudPanel;
             public GameObject leaderboardPanel;
-            public Button challengePlayButton;
-            public Button streakButton;
-            public Button closeStreakButton;
-            public TextMeshProUGUI challengeTitleText;
-            public TextMeshProUGUI challengePatternText;
-            public TextMeshProUGUI cycleTimerText;
-            public TextMeshProUGUI challengeChanceText;
-            public TextMeshProUGUI nextChanceTimerText;
-            public TextMeshProUGUI challengeStatusText;
             public TextMeshProUGUI countdownText;
             public TextMeshProUGUI runTimerText;
-            public TextMeshProUGUI streakHeadlineText;
-            public TextMeshProUGUI streakSummaryText;
             public TextMeshProUGUI leaderboardTitleText;
             public TextMeshProUGUI leaderboardPlayerBestText;
             public TextMeshProUGUI finalScoreText;
             public Button submitScoreButton;
             public Button leaderboardMainMenuButton;
-            public ChallengeStreakDayView[] streakDayViews;
             public ChallengeLeaderboardEntryView[] leaderboardEntryViews;
         }
     }
 }
-
-
-

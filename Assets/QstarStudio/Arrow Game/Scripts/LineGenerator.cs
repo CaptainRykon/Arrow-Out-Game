@@ -7,9 +7,7 @@ namespace ArrowGame
     public class LineGenerator : MonoBehaviour
     {
         [Header("Generate settings")]
-        // Width of the grid.
         public int width = 20;
-        // Height of the grid.
         public int height = 20;
         public int maxLineLength = 20;
         public float lineWidth = .2f;
@@ -35,10 +33,14 @@ namespace ArrowGame
         public float introSpawnOffsetPadding = 4f;
 
         private bool[,] occupiedPoints;
+        private bool[,] playableMask;
+        private bool usePlayableMask;
         private Material lineMaterial;
         private Transform dotsRoot;
         private Transform linesRoot;
         private Vector2 boardOffset;
+        private Vector2 boardMin;
+        private Vector2 boardMax;
         private readonly List<SpriteRenderer> dotRenderers = new();
 
         private static Sprite runtimeDotSprite;
@@ -50,6 +52,40 @@ namespace ArrowGame
             Vector2Int.down,
             Vector2Int.left
         };
+
+        public void SetPlayableMask(bool[,] mask)
+        {
+            if (mask == null)
+            {
+                ClearPlayableMask();
+                return;
+            }
+
+            width = mask.GetLength(0);
+            height = mask.GetLength(1);
+            playableMask = (bool[,])mask.Clone();
+            usePlayableMask = true;
+        }
+
+        public void ClearPlayableMask()
+        {
+            playableMask = null;
+            usePlayableMask = false;
+        }
+
+        public void GetBoardBounds(out Vector2 min, out Vector2 max)
+        {
+            Vector2 offset = new(width / 2f, height / 2f);
+            if (!TryGetPlayableCellBounds(out Vector2Int minCell, out Vector2Int maxCell))
+            {
+                min = new Vector2(-offset.x, -offset.y);
+                max = new Vector2(width - 1 - offset.x, height - 1 - offset.y);
+                return;
+            }
+
+            min = new Vector2(minCell.x - offset.x, minCell.y - offset.y);
+            max = new Vector2(maxCell.x - offset.x, maxCell.y - offset.y);
+        }
 
         private void Start()
         {
@@ -68,7 +104,7 @@ namespace ArrowGame
         private void MarkHeadForwardBlocked(Vector2Int headPosition, Vector2Int headDirection)
         {
             Vector2Int checkPoint = headPosition + headDirection;
-            while (IsPointValid(checkPoint))
+            while (IsPointValid(checkPoint) && IsPlayablePoint(checkPoint))
             {
                 occupiedPoints[checkPoint.x, checkPoint.y] = true;
                 checkPoint += headDirection;
@@ -78,7 +114,7 @@ namespace ArrowGame
         private void ClearHeadForwardBlocked(Vector2Int headPosition, Vector2Int headDirection)
         {
             Vector2Int checkPoint = headPosition + headDirection;
-            while (IsPointValid(checkPoint))
+            while (IsPointValid(checkPoint) && IsPlayablePoint(checkPoint))
             {
                 occupiedPoints[checkPoint.x, checkPoint.y] = false;
                 checkPoint += headDirection;
@@ -125,7 +161,7 @@ namespace ArrowGame
                     for (int i = 1; i <= segmentLength; i++)
                     {
                         Vector2Int nextPoint = currentPos + currentDirection * i;
-                        if (IsPointValid(nextPoint) && !occupiedPoints[nextPoint.x, nextPoint.y])
+                        if (IsPointValid(nextPoint) && IsPlayablePoint(nextPoint) && !occupiedPoints[nextPoint.x, nextPoint.y])
                         {
                             linePoints.Add(nextPoint);
                             occupiedPoints[nextPoint.x, nextPoint.y] = true;
@@ -170,9 +206,6 @@ namespace ArrowGame
 
         private void CreateGeneratedLine(List<Vector2Int> linePoints)
         {
-            Vector2 minBounds = GetBoardMin();
-            Vector2 maxBounds = GetBoardMax();
-
             GameObject lineObj = new("Line");
             lineObj.transform.SetParent(linesRoot, false);
 
@@ -202,7 +235,7 @@ namespace ArrowGame
 
             lineController.arrow = CreateArrow(current, direction, lineObj.transform);
             lineController.board = Mathf.Max(width, height) * 2f;
-            lineController.ConfigureBoardBounds(minBounds, maxBounds);
+            lineController.ConfigureBoardBounds(boardMin, boardMax);
             lineController.ConfigureIntroOffset(GetIntroOffset(direction));
             lineController.Init();
             lineController.ConfigureGuideLine(lineMaterial, guideLineWidth, guideLineColor, guideLineSortingOrder);
@@ -233,15 +266,18 @@ namespace ArrowGame
                 {
                     for (int y = center.y - radius; y <= center.y + radius; y++)
                     {
-                        if (x >= 1 && x < width - 1 && y >= 1 && y < height - 1)
-                        {
-                            if (Mathf.Abs(x - center.x) == radius || Mathf.Abs(y - center.y) == radius)
-                            {
-                                Vector2Int point = new(x, y);
-                                if (!occupiedPoints[x, y] && FindAvailableDirection(point).HasValue)
-                                    return point;
-                            }
-                        }
+                        if (x < 1 || x >= width - 1 || y < 1 || y >= height - 1)
+                            continue;
+
+                        if (Mathf.Abs(x - center.x) != radius && Mathf.Abs(y - center.y) != radius)
+                            continue;
+
+                        Vector2Int point = new(x, y);
+                        if (!IsPlayablePoint(point) || occupiedPoints[x, y])
+                            continue;
+
+                        if (FindAvailableDirection(point).HasValue)
+                            return point;
                     }
                 }
             }
@@ -252,7 +288,7 @@ namespace ArrowGame
         private bool IsDirectionBlocked(Vector2Int point, Vector2Int direction)
         {
             Vector2Int checkPoint = point + direction;
-            while (IsPointValid(checkPoint))
+            while (IsPointValid(checkPoint) && IsPlayablePoint(checkPoint))
             {
                 if (occupiedPoints[checkPoint.x, checkPoint.y])
                     return true;
@@ -302,7 +338,7 @@ namespace ArrowGame
             for (int i = 1; i <= maxLineLength; i++)
             {
                 Vector2Int checkPoint = startPoint + direction * i;
-                if (IsPointValid(checkPoint) && !occupiedPoints[checkPoint.x, checkPoint.y])
+                if (IsPointValid(checkPoint) && IsPlayablePoint(checkPoint) && !occupiedPoints[checkPoint.x, checkPoint.y])
                 {
                     maxPossibleLength = i;
                 }
@@ -320,7 +356,7 @@ namespace ArrowGame
             foreach (Vector2Int dir in directions)
             {
                 Vector2Int neighbor = point + dir;
-                if (IsPointValid(neighbor) && !occupiedPoints[neighbor.x, neighbor.y])
+                if (IsPointValid(neighbor) && IsPlayablePoint(neighbor) && !occupiedPoints[neighbor.x, neighbor.y])
                     return false;
             }
 
@@ -332,11 +368,17 @@ namespace ArrowGame
             return point.x >= 0 && point.x < width && point.y >= 0 && point.y < height;
         }
 
+        private bool IsPlayablePoint(Vector2Int point)
+        {
+            return !usePlayableMask || (IsPointValid(point) && playableMask[point.x, point.y]);
+        }
+
         private void CreateVisualRoots()
         {
             boardOffset = new Vector2(width / 2f, height / 2f);
             dotsRoot = CreateChildRoot("Dot Grid");
             linesRoot = CreateChildRoot("Generated Lines");
+            GetBoardBounds(out boardMin, out boardMax);
         }
 
         private Transform CreateChildRoot(string rootName)
@@ -354,6 +396,9 @@ namespace ArrowGame
             {
                 for (int y = 0; y < height; y++)
                 {
+                    if (!IsPlayablePoint(new Vector2Int(x, y)))
+                        continue;
+
                     GameObject dotObject = new($"Dot_{x}_{y}");
                     dotObject.transform.SetParent(dotsRoot, false);
                     dotObject.transform.localPosition = new Vector3(x - boardOffset.x, y - boardOffset.y, 0f);
@@ -377,7 +422,7 @@ namespace ArrowGame
             List<Color> startColors = new(dotRenderers.Count);
             List<Vector3> startScales = new(dotRenderers.Count);
             List<float> startTimes = new(dotRenderers.Count);
-            Vector2 boardCenter = (GetBoardMin() + GetBoardMax()) * 0.5f;
+            Vector2 boardCenter = (boardMin + boardMax) * 0.5f;
             float maxDistance = 0.0001f;
 
             foreach (SpriteRenderer dotRenderer in dotRenderers)
@@ -463,20 +508,41 @@ namespace ArrowGame
             }
         }
 
-        private Vector2 GetBoardMin()
+        private bool TryGetPlayableCellBounds(out Vector2Int minCell, out Vector2Int maxCell)
         {
-            return new Vector2(-boardOffset.x, -boardOffset.y);
-        }
+            if (!usePlayableMask || playableMask == null)
+            {
+                minCell = default;
+                maxCell = default;
+                return false;
+            }
 
-        private Vector2 GetBoardMax()
-        {
-            return new Vector2(width - 1 - boardOffset.x, height - 1 - boardOffset.y);
+            bool foundAny = false;
+            minCell = new Vector2Int(width, height);
+            maxCell = Vector2Int.zero;
+
+            for (int x = 0; x < width; x++)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    if (!playableMask[x, y])
+                        continue;
+
+                    foundAny = true;
+                    if (x < minCell.x) minCell.x = x;
+                    if (y < minCell.y) minCell.y = y;
+                    if (x > maxCell.x) maxCell.x = x;
+                    if (y > maxCell.y) maxCell.y = y;
+                }
+            }
+
+            return foundAny;
         }
 
         private Vector2 GetIntroOffset(Vector2 direction)
         {
-            float horizontalOffset = width * 0.5f + introSpawnOffsetPadding;
-            float verticalOffset = height * 0.5f + introSpawnOffsetPadding;
+            float horizontalOffset = (boardMax.x - boardMin.x) * 0.5f + introSpawnOffsetPadding;
+            float verticalOffset = (boardMax.y - boardMin.y) * 0.5f + introSpawnOffsetPadding;
 
             if (Mathf.Abs(direction.x) > Mathf.Abs(direction.y))
                 return Vector2.right * Mathf.Sign(direction.x) * horizontalOffset;
