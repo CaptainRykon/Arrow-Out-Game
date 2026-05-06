@@ -34,6 +34,46 @@ namespace ArrowGame
         [SerializeField] private Button challengePlayButton;
         [SerializeField] private TextMeshProUGUI currentLevelLabel;
 
+        [Header("Settings")]
+        [SerializeField] private TMP_InputField userNameInputField;
+        [SerializeField] private Button vibrationToggleButton;
+        [SerializeField] private Image vibrationToggleBackground;
+        [SerializeField] private RectTransform vibrationToggleKnob;
+        [SerializeField] private Button soundToggleButton;
+        [SerializeField] private Image soundToggleBackground;
+        [SerializeField] private RectTransform soundToggleKnob;
+        [SerializeField] private Button darkModeToggleButton;
+        [SerializeField] private Image darkModeToggleBackground;
+        [SerializeField] private RectTransform darkModeToggleKnob;
+        [SerializeField] private Button privacyButton;
+        [SerializeField] private Button termsButton;
+        [SerializeField] private Button faqButton;
+        [SerializeField] private Button telegramButton;
+        [SerializeField] private Button twitterButton;
+        [SerializeField] private string privacyUrl;
+        [SerializeField] private string termsUrl;
+        [SerializeField] private string faqUrl;
+        [SerializeField] private string telegramUrl;
+        [SerializeField] private string twitterUrl;
+
+        [Header("Settings Theme")]
+        [SerializeField] private Image[] themeSurfaceImages;
+        [SerializeField] private Image[] themeAccentImages;
+        [SerializeField] private TextMeshProUGUI[] themePrimaryTexts;
+        [SerializeField] private TextMeshProUGUI[] themeSecondaryTexts;
+        [SerializeField] private Color lightSurfaceColor = new(0.25f, 0.41f, 0.59f, 1f);
+        [SerializeField] private Color darkSurfaceColor = new(0.14f, 0.18f, 0.24f, 1f);
+        [SerializeField] private Color lightAccentColor = new(1f, 0.82f, 0.29f, 1f);
+        [SerializeField] private Color darkAccentColor = new(0.45f, 0.67f, 1f, 1f);
+        [SerializeField] private Color lightPrimaryTextColor = new(0.95f, 0.96f, 1f, 1f);
+        [SerializeField] private Color darkPrimaryTextColor = new(0.9f, 0.95f, 1f, 1f);
+        [SerializeField] private Color lightSecondaryTextColor = new(0.73f, 0.84f, 1f, 1f);
+        [SerializeField] private Color darkSecondaryTextColor = new(0.77f, 0.84f, 0.92f, 1f);
+        [SerializeField] private Color toggleEnabledColor = new(1f, 0.82f, 0.29f, 1f);
+        [SerializeField] private Color toggleDisabledColor = new(0.45f, 0.52f, 0.64f, 1f);
+        [SerializeField] private Vector2 toggleKnobOnPosition = new(26f, 0f);
+        [SerializeField] private Vector2 toggleKnobOffPosition = new(-26f, 0f);
+
         [Header("Challenge UI")]
         [SerializeField] private string challengeTitlePrefix = "Weekly Challenge";
         [SerializeField] private string[] challengePatternNames = { "Star", "Duck", "Bolt", "Crown", "Leaf", "Rocket", "Moon" };
@@ -62,8 +102,10 @@ namespace ArrowGame
         private void Awake()
         {
             WireButtons();
+            WireSettingsControls();
             CloseStreakPanel();
             RefreshLevelLabel();
+            RefreshSettingsUi();
             ShowHome();
         }
 
@@ -72,6 +114,13 @@ namespace ArrowGame
             nextChallengeUiRefreshTime = 0f;
             RefreshLevelLabel();
             RefreshChallengeUi();
+            RefreshSettingsUi();
+        }
+
+        private void OnDestroy()
+        {
+            if (userNameInputField != null)
+                userNameInputField.onEndEdit.RemoveListener(HandleUserNameChanged);
         }
 
         public void ShowHome()
@@ -88,16 +137,21 @@ namespace ArrowGame
         public void ShowSettings()
         {
             CloseStreakPanel();
+            RefreshSettingsUi();
             SetTabState(false, false, true);
         }
 
         public void PlayGame()
         {
+            SoundManager.PlayButtonClick();
+            HapticManager.PlayButtonTap();
             SceneManager.LoadScene(GameSceneName);
         }
 
         public void PlayChallenge()
         {
+            SoundManager.PlayButtonClick();
+            HapticManager.PlayButtonTap();
             if (!GameDataStore.CanPlayChallengeToday(DateTime.UtcNow))
             {
                 RefreshChallengeUi();
@@ -137,6 +191,24 @@ namespace ArrowGame
             RegisterButton(closeStreakButton, CloseStreakPanel);
         }
 
+        private void WireSettingsControls()
+        {
+            RegisterButton(vibrationToggleButton, ToggleVibration);
+            RegisterButton(soundToggleButton, ToggleSound);
+            RegisterButton(darkModeToggleButton, ToggleDarkMode);
+            RegisterButton(privacyButton, OpenPrivacy);
+            RegisterButton(termsButton, OpenTerms);
+            RegisterButton(faqButton, OpenFaq);
+            RegisterButton(telegramButton, OpenTelegram);
+            RegisterButton(twitterButton, OpenTwitter);
+
+            if (userNameInputField != null)
+            {
+                userNameInputField.onEndEdit.RemoveListener(HandleUserNameChanged);
+                userNameInputField.onEndEdit.AddListener(HandleUserNameChanged);
+            }
+        }
+
         private static void RegisterButton(Button button, UnityEngine.Events.UnityAction action)
         {
             if (button == null)
@@ -167,6 +239,120 @@ namespace ArrowGame
 
             if (label != null)
                 label.color = isSelected ? selectedLabelColor : unselectedLabelColor;
+        }
+
+        private void ToggleVibration()
+        {
+            bool isEnabled = !GameDataStore.IsVibrationEnabled;
+            GameDataStore.IsVibrationEnabled = isEnabled;
+            RefreshSettingsUi();
+
+            if (isEnabled)
+                HapticManager.PlayToggleEnabledPreview();
+        }
+
+        private void ToggleSound()
+        {
+            bool isEnabled = !GameDataStore.IsSoundEnabled;
+            GameDataStore.IsSoundEnabled = isEnabled;
+            SoundManager.ApplySoundEnabled(isEnabled);
+            RefreshSettingsUi();
+        }
+
+        private void ToggleDarkMode()
+        {
+            GameDataStore.IsDarkModeEnabled = !GameDataStore.IsDarkModeEnabled;
+            RefreshSettingsUi();
+        }
+
+        private void OpenPrivacy() => OpenExternalUrl(privacyUrl);
+        private void OpenTerms() => OpenExternalUrl(termsUrl);
+        private void OpenFaq() => OpenExternalUrl(faqUrl);
+        private void OpenTelegram() => OpenExternalUrl(telegramUrl);
+        private void OpenTwitter() => OpenExternalUrl(twitterUrl);
+
+        private void OpenExternalUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+
+            SoundManager.PlayButtonClick();
+            HapticManager.PlayButtonTap();
+            Application.OpenURL(url);
+        }
+
+        private void HandleUserNameChanged(string value)
+        {
+            GameDataStore.PlayerName = value;
+            RefreshSettingsUi();
+        }
+
+        private void RefreshSettingsUi()
+        {
+            if (userNameInputField != null)
+                userNameInputField.SetTextWithoutNotify(GameDataStore.PlayerName);
+
+            bool isVibrationEnabled = GameDataStore.IsVibrationEnabled;
+            bool isSoundEnabled = GameDataStore.IsSoundEnabled;
+            bool isDarkModeEnabled = GameDataStore.IsDarkModeEnabled;
+
+            UpdateToggleVisual(vibrationToggleBackground, vibrationToggleKnob, isVibrationEnabled);
+            UpdateToggleVisual(soundToggleBackground, soundToggleKnob, isSoundEnabled);
+            UpdateToggleVisual(darkModeToggleBackground, darkModeToggleKnob, isDarkModeEnabled);
+            ApplyDarkModeState(isDarkModeEnabled);
+
+            SetLinkState(privacyButton, privacyUrl);
+            SetLinkState(termsButton, termsUrl);
+            SetLinkState(faqButton, faqUrl);
+            SetLinkState(telegramButton, telegramUrl);
+            SetLinkState(twitterButton, twitterUrl);
+        }
+
+        private void UpdateToggleVisual(Image background, RectTransform knob, bool isEnabled)
+        {
+            if (background != null)
+                background.color = isEnabled ? toggleEnabledColor : toggleDisabledColor;
+
+            if (knob != null)
+                knob.anchoredPosition = isEnabled ? toggleKnobOnPosition : toggleKnobOffPosition;
+        }
+
+        private void ApplyDarkModeState(bool isDarkModeEnabled)
+        {
+            ApplyImageColors(themeSurfaceImages, isDarkModeEnabled ? darkSurfaceColor : lightSurfaceColor);
+            ApplyImageColors(themeAccentImages, isDarkModeEnabled ? darkAccentColor : lightAccentColor);
+            ApplyTextColors(themePrimaryTexts, isDarkModeEnabled ? darkPrimaryTextColor : lightPrimaryTextColor);
+            ApplyTextColors(themeSecondaryTexts, isDarkModeEnabled ? darkSecondaryTextColor : lightSecondaryTextColor);
+        }
+
+        private static void ApplyImageColors(Image[] images, Color color)
+        {
+            if (images == null)
+                return;
+
+            for (int i = 0; i < images.Length; i++)
+            {
+                if (images[i] != null)
+                    images[i].color = color;
+            }
+        }
+
+        private static void ApplyTextColors(TextMeshProUGUI[] texts, Color color)
+        {
+            if (texts == null)
+                return;
+
+            for (int i = 0; i < texts.Length; i++)
+            {
+                if (texts[i] != null)
+                    texts[i].color = color;
+            }
+        }
+
+        private static void SetLinkState(Button button, string url)
+        {
+            if (button != null)
+                button.interactable = !string.IsNullOrWhiteSpace(url);
         }
 
         private void Update()

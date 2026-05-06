@@ -17,10 +17,17 @@ namespace ArrowGame.Data
     {
         private const string LevelKey = "level";
         private const string HintCountKey = "hint_count";
+        private const string PlayerNameKey = "player_name";
         private const string ChallengePlayerNameKey = "challenge_player_name";
         private const string ChallengeLastPlayedUtcDayKey = "challenge_last_played_utc_day";
+        private const string VibrationEnabledKey = "vibration_enabled";
+        private const string SoundEnabledKey = "sound_enabled";
+        private const string DarkModeEnabledKey = "dark_mode_enabled";
         private const int DefaultLevel = 1;
         private const int DefaultHintCount = 10;
+        private const bool DefaultVibrationEnabled = true;
+        private const bool DefaultSoundEnabled = true;
+        private const bool DefaultDarkModeEnabled = false;
         private const int ChallengeCycleLengthDays = 7;
         private static readonly DateTime UnixEpochUtc = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         private static readonly DateTime ChallengeEpochUtc = new(2026, 4, 27, 0, 0, 0, DateTimeKind.Utc);
@@ -30,14 +37,26 @@ namespace ArrowGame.Data
             "Kai", "Zara", "Nina", "Ezra", "Milo", "Skye", "Nova", "Jude"
         };
 
-        public static string ChallengePlayerName
+        public static string PlayerName
         {
-            get => PlayerPrefs.GetString(ChallengePlayerNameKey, "You");
+            get
+            {
+                string fallbackName = PlayerPrefs.GetString(ChallengePlayerNameKey, "You");
+                return PlayerPrefs.GetString(PlayerNameKey, fallbackName);
+            }
             set
             {
-                PlayerPrefs.SetString(ChallengePlayerNameKey, string.IsNullOrWhiteSpace(value) ? "You" : value.Trim());
+                string sanitizedValue = string.IsNullOrWhiteSpace(value) ? "You" : value.Trim();
+                PlayerPrefs.SetString(PlayerNameKey, sanitizedValue);
+                PlayerPrefs.SetString(ChallengePlayerNameKey, sanitizedValue);
                 PlayerPrefs.Save();
             }
+        }
+
+        public static string ChallengePlayerName
+        {
+            get => PlayerName;
+            set => PlayerName = value;
         }
 
         public static int Level
@@ -56,6 +75,36 @@ namespace ArrowGame.Data
             set
             {
                 PlayerPrefs.SetInt(HintCountKey, Mathf.Max(0, value));
+                PlayerPrefs.Save();
+            }
+        }
+
+        public static bool IsVibrationEnabled
+        {
+            get => PlayerPrefs.GetInt(VibrationEnabledKey, DefaultVibrationEnabled ? 1 : 0) != 0;
+            set
+            {
+                PlayerPrefs.SetInt(VibrationEnabledKey, value ? 1 : 0);
+                PlayerPrefs.Save();
+            }
+        }
+
+        public static bool IsSoundEnabled
+        {
+            get => PlayerPrefs.GetInt(SoundEnabledKey, DefaultSoundEnabled ? 1 : 0) != 0;
+            set
+            {
+                PlayerPrefs.SetInt(SoundEnabledKey, value ? 1 : 0);
+                PlayerPrefs.Save();
+            }
+        }
+
+        public static bool IsDarkModeEnabled
+        {
+            get => PlayerPrefs.GetInt(DarkModeEnabledKey, DefaultDarkModeEnabled ? 1 : 0) != 0;
+            set
+            {
+                PlayerPrefs.SetInt(DarkModeEnabledKey, value ? 1 : 0);
                 PlayerPrefs.Save();
             }
         }

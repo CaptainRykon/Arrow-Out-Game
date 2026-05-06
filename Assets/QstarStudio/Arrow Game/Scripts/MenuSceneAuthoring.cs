@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -26,12 +27,39 @@ namespace ArrowGame
             public ChallengeStreakDayView[] streakDayViews;
         }
 
+        private sealed class SettingsMenuReferences
+        {
+            public TMP_InputField userNameInputField;
+            public Button vibrationToggleButton;
+            public Image vibrationToggleBackground;
+            public RectTransform vibrationToggleKnob;
+            public Button soundToggleButton;
+            public Image soundToggleBackground;
+            public RectTransform soundToggleKnob;
+            public Button darkModeToggleButton;
+            public Image darkModeToggleBackground;
+            public RectTransform darkModeToggleKnob;
+            public Button privacyButton;
+            public Button termsButton;
+            public Button faqButton;
+            public Button telegramButton;
+            public Button twitterButton;
+            public Image[] themeSurfaceImages;
+            public Image[] themeAccentImages;
+            public TextMeshProUGUI[] themePrimaryTexts;
+            public TextMeshProUGUI[] themeSecondaryTexts;
+        }
+
         private static Sprite runtimeSprite;
 
         private readonly Color cardColor = new(0.18f, 0.2f, 0.31f, 1f);
         private readonly Color accentColor = new(0.35f, 0.43f, 0.98f, 1f);
         private readonly Color textPrimaryColor = new(0.95f, 0.96f, 1f, 1f);
         private readonly Color textSecondaryColor = new(0.67f, 0.7f, 0.84f, 1f);
+        private readonly Color settingsPanelColor = new(0.16f, 0.16f, 0.18f, 1f);
+        private readonly Color settingsCardColor = new(0.25f, 0.41f, 0.59f, 1f);
+        private readonly Color settingsAccentColor = new(1f, 0.82f, 0.29f, 1f);
+        private readonly Color toggleKnobColor = Color.white;
 
         private void OnEnable()
         {
@@ -39,12 +67,14 @@ namespace ArrowGame
                 return;
 
             EnsureChallengeUi();
+            EnsureSettingsUi();
         }
 
         [ContextMenu("Rebuild Menu Hierarchy")]
         public void RebuildMenuHierarchy()
         {
             EnsureChallengeUi(forceRebuild: true);
+            EnsureSettingsUi(forceRebuild: true);
         }
 
         private void EnsureChallengeUi(bool forceRebuild = false)
@@ -104,6 +134,52 @@ namespace ArrowGame
 #endif
         }
 
+        private void EnsureSettingsUi(bool forceRebuild = false)
+        {
+            MenuSceneController controller = GetComponent<MenuSceneController>();
+            if (controller == null)
+                return;
+
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            if (canvas == null)
+                return;
+
+            EnsureEventSystem();
+
+            Transform settingsPanel = FindDeepChild(canvas.transform, "Settings Panel");
+            if (settingsPanel == null)
+                return;
+
+            Image settingsPanelImage = settingsPanel.GetComponent<Image>();
+            if (settingsPanelImage != null && settingsPanelImage.sprite == null)
+            {
+                settingsPanelImage.sprite = GetRuntimeSprite();
+                settingsPanelImage.type = Image.Type.Sliced;
+                settingsPanelImage.color = settingsPanelColor;
+            }
+
+            Transform settingsContent = settingsPanel.Find("Settings Content") ?? FindDeepChild(settingsPanel, "Settings Content");
+            if (forceRebuild || NeedsSettingsMenuRebuild(settingsContent))
+            {
+                if (settingsContent != null)
+                    DestroyEditorSafe(settingsContent.gameObject);
+
+                BuildSettingsPanel(settingsPanel);
+            }
+
+            SettingsMenuReferences refs = CollectSettingsReferences(settingsPanel);
+            if (!HasRequiredSettingsReferences(refs))
+                return;
+
+            AssignSettingsReferences(controller, refs);
+
+#if UNITY_EDITOR
+            UnityEditor.EditorUtility.SetDirty(controller);
+            if (controller.gameObject.scene.IsValid())
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(controller.gameObject.scene);
+#endif
+        }
+
         private bool NeedsChallengeMenuRebuild(Transform challengeMenuPanel)
         {
             return challengeMenuPanel == null ||
@@ -115,6 +191,21 @@ namespace ArrowGame
                    FindDeepChild(challengeMenuPanel, "Status Text") == null ||
                    FindDeepChild(challengeMenuPanel, "Streak Button") == null ||
                    FindDeepChild(challengeMenuPanel, "Play Challenge Button") == null;
+        }
+
+        private bool NeedsSettingsMenuRebuild(Transform settingsContent)
+        {
+            return settingsContent == null ||
+                   FindDeepChild(settingsContent, "Settings Title") == null ||
+                   FindDeepChild(settingsContent, "Username Input Field") == null ||
+                   FindDeepChild(settingsContent, "Vibrations Toggle Button") == null ||
+                   FindDeepChild(settingsContent, "Sounds Toggle Button") == null ||
+                   FindDeepChild(settingsContent, "Dark Mode Toggle Button") == null ||
+                   FindDeepChild(settingsContent, "Privacy Button") == null ||
+                   FindDeepChild(settingsContent, "Terms & Conditions Button") == null ||
+                   FindDeepChild(settingsContent, "FAQ Button") == null ||
+                   FindDeepChild(settingsContent, "Join Telegram Button") == null ||
+                   FindDeepChild(settingsContent, "Twitter Button") == null;
         }
 
         private void BuildChallengeMenuPanel(Transform challengePanel)
@@ -251,6 +342,39 @@ namespace ArrowGame
             CreateButton(card, "Close", new Vector2(0f, 82f));
         }
 
+        private void BuildSettingsPanel(Transform settingsPanel)
+        {
+            RectTransform content = CreateRect("Settings Content", settingsPanel);
+            StretchRect(content);
+
+            VerticalLayoutGroup layout = content.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(42, 42, 42, 42);
+            layout.spacing = 24f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+
+            CreateStandaloneLabel(content, "Settings Title", "Settings", 60f, accentColor, TextAlignmentOptions.Center);
+            CreateStandaloneLabel(content, "Username Label", "Username", 24f, textSecondaryColor, TextAlignmentOptions.Center);
+            CreateInputField(content, "Username Input Field", "Enter your name");
+            CreateStandaloneLabel(content, "Preferences Heading", "Preferences", 22f, textSecondaryColor, TextAlignmentOptions.Center);
+
+            RectTransform preferencesCard = CreateCard(content, "Preferences Card", 420f);
+            CreateToggleRow(preferencesCard, "Vibrations");
+            CreateToggleRow(preferencesCard, "Sounds");
+            CreateToggleRow(preferencesCard, "Dark Mode");
+
+            CreateStandaloneLabel(content, "More Heading", "More", 22f, textSecondaryColor, TextAlignmentOptions.Center);
+            RectTransform linksCard = CreateCard(content, "Links Card", 560f);
+            CreateLinkRow(linksCard, "Privacy");
+            CreateLinkRow(linksCard, "Terms & Conditions");
+            CreateLinkRow(linksCard, "FAQ");
+            CreateLinkRow(linksCard, "Join Telegram");
+            CreateLinkRow(linksCard, "Twitter");
+        }
+
         private ChallengeMenuReferences CollectChallengeReferences(Transform challengePanel, Transform canvasRoot)
         {
             ChallengeMenuReferences refs = new();
@@ -283,6 +407,66 @@ namespace ArrowGame
             return refs;
         }
 
+        private SettingsMenuReferences CollectSettingsReferences(Transform settingsPanel)
+        {
+            SettingsMenuReferences refs = new();
+            Transform content = settingsPanel.Find("Settings Content") ?? FindDeepChild(settingsPanel, "Settings Content");
+            if (content == null)
+                return refs;
+
+            refs.userNameInputField = GetInputField(content, "Username Input Field");
+            refs.vibrationToggleButton = GetButton(content, "Vibrations Toggle Button");
+            refs.vibrationToggleBackground = GetImage(content, "Vibrations Toggle Button");
+            refs.vibrationToggleKnob = GetRect(content, "Vibrations Toggle Knob");
+            refs.soundToggleButton = GetButton(content, "Sounds Toggle Button");
+            refs.soundToggleBackground = GetImage(content, "Sounds Toggle Button");
+            refs.soundToggleKnob = GetRect(content, "Sounds Toggle Knob");
+            refs.darkModeToggleButton = GetButton(content, "Dark Mode Toggle Button");
+            refs.darkModeToggleBackground = GetImage(content, "Dark Mode Toggle Button");
+            refs.darkModeToggleKnob = GetRect(content, "Dark Mode Toggle Knob");
+            refs.privacyButton = GetButton(content, "Privacy Button");
+            refs.termsButton = GetButton(content, "Terms & Conditions Button");
+            refs.faqButton = GetButton(content, "FAQ Button");
+            refs.telegramButton = GetButton(content, "Join Telegram Button");
+            refs.twitterButton = GetButton(content, "Twitter Button");
+
+            List<Image> surfaceImages = new();
+            AddIfNotNull(surfaceImages, GetImage(content, "Preferences Card"));
+            AddIfNotNull(surfaceImages, GetImage(content, "Links Card"));
+            AddIfNotNull(surfaceImages, GetImage(content, "Username Input Field"));
+            refs.themeSurfaceImages = surfaceImages.ToArray();
+
+            List<Image> accentImages = new();
+            AddIfNotNull(accentImages, GetImage(content, "Privacy Button"));
+            AddIfNotNull(accentImages, GetImage(content, "Terms & Conditions Button"));
+            AddIfNotNull(accentImages, GetImage(content, "FAQ Button"));
+            AddIfNotNull(accentImages, GetImage(content, "Join Telegram Button"));
+            AddIfNotNull(accentImages, GetImage(content, "Twitter Button"));
+            refs.themeAccentImages = accentImages.ToArray();
+
+            List<TextMeshProUGUI> primaryTexts = new();
+            AddIfNotNull(primaryTexts, GetText(content, "Settings Title"));
+            AddIfNotNull(primaryTexts, GetText(content, "Username Text"));
+            AddIfNotNull(primaryTexts, GetText(content, "Vibrations Label"));
+            AddIfNotNull(primaryTexts, GetText(content, "Sounds Label"));
+            AddIfNotNull(primaryTexts, GetText(content, "Dark Mode Label"));
+            AddIfNotNull(primaryTexts, GetText(content, "Privacy Label"));
+            AddIfNotNull(primaryTexts, GetText(content, "Terms & Conditions Label"));
+            AddIfNotNull(primaryTexts, GetText(content, "FAQ Label"));
+            AddIfNotNull(primaryTexts, GetText(content, "Join Telegram Label"));
+            AddIfNotNull(primaryTexts, GetText(content, "Twitter Label"));
+            refs.themePrimaryTexts = primaryTexts.ToArray();
+
+            List<TextMeshProUGUI> secondaryTexts = new();
+            AddIfNotNull(secondaryTexts, GetText(content, "Username Label"));
+            AddIfNotNull(secondaryTexts, GetText(content, "Preferences Heading"));
+            AddIfNotNull(secondaryTexts, GetText(content, "More Heading"));
+            AddIfNotNull(secondaryTexts, GetText(content, "Username Placeholder"));
+            refs.themeSecondaryTexts = secondaryTexts.ToArray();
+
+            return refs;
+        }
+
         private static bool HasRequiredChallengeReferences(ChallengeMenuReferences refs)
         {
             if (refs == null || refs.titleText == null || refs.patternNameText == null || refs.cycleTimerText == null || refs.chanceText == null || refs.nextChanceTimerText == null || refs.statusText == null || refs.streakButton == null || refs.challengePlayButton == null || refs.streakPanel == null || refs.closeStreakButton == null || refs.streakHeadlineText == null || refs.streakSummaryText == null || refs.streakDayViews == null || refs.streakDayViews.Length < 7)
@@ -295,6 +479,26 @@ namespace ArrowGame
             }
 
             return true;
+        }
+
+        private static bool HasRequiredSettingsReferences(SettingsMenuReferences refs)
+        {
+            return refs != null &&
+                   refs.userNameInputField != null &&
+                   refs.vibrationToggleButton != null &&
+                   refs.vibrationToggleBackground != null &&
+                   refs.vibrationToggleKnob != null &&
+                   refs.soundToggleButton != null &&
+                   refs.soundToggleBackground != null &&
+                   refs.soundToggleKnob != null &&
+                   refs.darkModeToggleButton != null &&
+                   refs.darkModeToggleBackground != null &&
+                   refs.darkModeToggleKnob != null &&
+                   refs.privacyButton != null &&
+                   refs.termsButton != null &&
+                   refs.faqButton != null &&
+                   refs.telegramButton != null &&
+                   refs.twitterButton != null;
         }
 
 #if UNITY_EDITOR
@@ -317,6 +521,31 @@ namespace ArrowGame
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        private static void AssignSettingsReferences(MenuSceneController controller, SettingsMenuReferences refs)
+        {
+            UnityEditor.SerializedObject so = new(controller);
+            Assign(so, "userNameInputField", refs.userNameInputField);
+            Assign(so, "vibrationToggleButton", refs.vibrationToggleButton);
+            Assign(so, "vibrationToggleBackground", refs.vibrationToggleBackground);
+            Assign(so, "vibrationToggleKnob", refs.vibrationToggleKnob);
+            Assign(so, "soundToggleButton", refs.soundToggleButton);
+            Assign(so, "soundToggleBackground", refs.soundToggleBackground);
+            Assign(so, "soundToggleKnob", refs.soundToggleKnob);
+            Assign(so, "darkModeToggleButton", refs.darkModeToggleButton);
+            Assign(so, "darkModeToggleBackground", refs.darkModeToggleBackground);
+            Assign(so, "darkModeToggleKnob", refs.darkModeToggleKnob);
+            Assign(so, "privacyButton", refs.privacyButton);
+            Assign(so, "termsButton", refs.termsButton);
+            Assign(so, "faqButton", refs.faqButton);
+            Assign(so, "telegramButton", refs.telegramButton);
+            Assign(so, "twitterButton", refs.twitterButton);
+            AssignArray(so, "themeSurfaceImages", refs.themeSurfaceImages);
+            AssignArray(so, "themeAccentImages", refs.themeAccentImages);
+            AssignArray(so, "themePrimaryTexts", refs.themePrimaryTexts);
+            AssignArray(so, "themeSecondaryTexts", refs.themeSecondaryTexts);
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         private static void Assign(UnityEditor.SerializedObject so, string propertyName, Object value)
         {
             UnityEditor.SerializedProperty property = so.FindProperty(propertyName);
@@ -336,6 +565,142 @@ namespace ArrowGame
         }
 #endif
 
+        private RectTransform CreateCard(Transform parent, string name, float preferredHeight)
+        {
+            RectTransform card = CreateRect(name, parent);
+            LayoutElement layout = card.gameObject.AddComponent<LayoutElement>();
+            layout.preferredHeight = preferredHeight;
+            layout.flexibleWidth = 1f;
+
+            Image image = card.gameObject.AddComponent<Image>();
+            image.sprite = GetRuntimeSprite();
+            image.color = settingsCardColor;
+            image.type = Image.Type.Sliced;
+
+            VerticalLayoutGroup verticalLayout = card.gameObject.AddComponent<VerticalLayoutGroup>();
+            verticalLayout.padding = new RectOffset(24, 24, 24, 24);
+            verticalLayout.spacing = 18f;
+            verticalLayout.childAlignment = TextAnchor.UpperCenter;
+            verticalLayout.childControlWidth = true;
+            verticalLayout.childControlHeight = false;
+            verticalLayout.childForceExpandWidth = true;
+            verticalLayout.childForceExpandHeight = false;
+            return card;
+        }
+
+        private void CreateToggleRow(Transform parent, string label)
+        {
+            RectTransform row = CreateRect($"{label} Row", parent);
+            LayoutElement rowLayout = row.gameObject.AddComponent<LayoutElement>();
+            rowLayout.preferredHeight = 92f;
+
+            HorizontalLayoutGroup layout = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+            layout.padding = new RectOffset(16, 16, 0, 0);
+            layout.spacing = 18f;
+            layout.childAlignment = TextAnchor.MiddleLeft;
+            layout.childControlWidth = false;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            RectTransform iconRect = CreateRect($"{label} Icon", row);
+            LayoutElement iconLayout = iconRect.gameObject.AddComponent<LayoutElement>();
+            iconLayout.preferredWidth = 48f;
+            iconLayout.preferredHeight = 48f;
+            Image iconImage = iconRect.gameObject.AddComponent<Image>();
+            iconImage.sprite = GetRuntimeSprite();
+            iconImage.color = Color.white;
+            iconImage.type = Image.Type.Sliced;
+
+            RectTransform labelRect = CreateRect($"{label} Label", row);
+            LayoutElement labelLayout = labelRect.gameObject.AddComponent<LayoutElement>();
+            labelLayout.flexibleWidth = 1f;
+            labelLayout.preferredHeight = 48f;
+            CreateRectLabel(labelRect, label, 34f, textPrimaryColor, TextAlignmentOptions.Left);
+
+            RectTransform toggleRect = CreateRect($"{label} Toggle Button", row);
+            LayoutElement toggleLayout = toggleRect.gameObject.AddComponent<LayoutElement>();
+            toggleLayout.preferredWidth = 126f;
+            toggleLayout.preferredHeight = 62f;
+            Image toggleImage = toggleRect.gameObject.AddComponent<Image>();
+            toggleImage.sprite = GetRuntimeSprite();
+            toggleImage.color = settingsAccentColor;
+            toggleImage.type = Image.Type.Sliced;
+            Button toggleButton = toggleRect.gameObject.AddComponent<Button>();
+            toggleButton.targetGraphic = toggleImage;
+
+            RectTransform knob = CreateRect($"{label} Toggle Knob", toggleRect);
+            knob.anchorMin = new Vector2(0.5f, 0.5f);
+            knob.anchorMax = new Vector2(0.5f, 0.5f);
+            knob.pivot = new Vector2(0.5f, 0.5f);
+            knob.sizeDelta = new Vector2(52f, 52f);
+            knob.anchoredPosition = new Vector2(26f, 0f);
+            Image knobImage = knob.gameObject.AddComponent<Image>();
+            knobImage.sprite = GetRuntimeSprite();
+            knobImage.color = toggleKnobColor;
+            knobImage.type = Image.Type.Sliced;
+        }
+
+        private void CreateLinkRow(Transform parent, string label)
+        {
+            RectTransform buttonRect = CreateRect($"{label} Button", parent);
+            LayoutElement layout = buttonRect.gameObject.AddComponent<LayoutElement>();
+            layout.preferredHeight = 76f;
+            layout.flexibleWidth = 1f;
+
+            Image image = buttonRect.gameObject.AddComponent<Image>();
+            image.sprite = GetRuntimeSprite();
+            image.color = settingsAccentColor;
+            image.type = Image.Type.Sliced;
+
+            Button button = buttonRect.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+
+            HorizontalLayoutGroup rowLayout = buttonRect.gameObject.AddComponent<HorizontalLayoutGroup>();
+            rowLayout.padding = new RectOffset(20, 20, 0, 0);
+            rowLayout.childAlignment = TextAnchor.MiddleCenter;
+            rowLayout.childControlWidth = true;
+            rowLayout.childControlHeight = true;
+            rowLayout.childForceExpandWidth = true;
+            rowLayout.childForceExpandHeight = true;
+
+            CreateText(buttonRect, $"{label} Label", label, 28f, textPrimaryColor, TextAlignmentOptions.Center);
+        }
+
+        private TMP_InputField CreateInputField(Transform parent, string name, string placeholderText)
+        {
+            RectTransform root = CreateRect(name, parent);
+            LayoutElement layout = root.gameObject.AddComponent<LayoutElement>();
+            layout.preferredHeight = 78f;
+            layout.preferredWidth = 0f;
+            layout.flexibleWidth = 1f;
+
+            Image background = root.gameObject.AddComponent<Image>();
+            background.sprite = GetRuntimeSprite();
+            background.color = settingsCardColor;
+            background.type = Image.Type.Sliced;
+
+            TMP_InputField inputField = root.gameObject.AddComponent<TMP_InputField>();
+            inputField.targetGraphic = background;
+            inputField.lineType = TMP_InputField.LineType.SingleLine;
+
+            RectTransform textViewport = CreateRect("Text Viewport", root);
+            textViewport.anchorMin = Vector2.zero;
+            textViewport.anchorMax = Vector2.one;
+            textViewport.offsetMin = new Vector2(24f, 14f);
+            textViewport.offsetMax = new Vector2(-24f, -14f);
+            textViewport.gameObject.AddComponent<RectMask2D>();
+
+            TextMeshProUGUI textComponent = CreateText(textViewport, "Username Text", string.Empty, 28f, textPrimaryColor, TextAlignmentOptions.Left);
+            TextMeshProUGUI placeholder = CreateText(textViewport, "Username Placeholder", placeholderText, 28f, textSecondaryColor, TextAlignmentOptions.Left);
+            placeholder.fontStyle = FontStyles.Italic;
+
+            inputField.textViewport = textViewport;
+            inputField.textComponent = textComponent;
+            inputField.placeholder = placeholder;
+            return inputField;
+        }
+
         private Button CreateButton(Transform parent, string label, Vector2 size)
         {
             RectTransform rect = CreateRect($"{label} Button", parent);
@@ -348,6 +713,15 @@ namespace ArrowGame
             button.targetGraphic = image;
             CreateNamedLabel(rect, "Label", label, 34f, textPrimaryColor);
             return button;
+        }
+
+        private TextMeshProUGUI CreateStandaloneLabel(Transform parent, string objectName, string text, float fontSize, Color color, TextAlignmentOptions alignment)
+        {
+            RectTransform rect = CreateRect(objectName, parent);
+            LayoutElement layout = rect.gameObject.AddComponent<LayoutElement>();
+            layout.preferredHeight = fontSize + 18f;
+            layout.flexibleWidth = 1f;
+            return CreateRectLabel(rect, text, fontSize, color, alignment);
         }
 
         private static TextMeshProUGUI CreateNamedLabel(Transform parent, string objectName, string text, float fontSize, Color color)
@@ -366,6 +740,28 @@ namespace ArrowGame
             ContentSizeFitter fitter = rect.gameObject.AddComponent<ContentSizeFitter>();
             fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
             fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            return label;
+        }
+
+        private static TextMeshProUGUI CreateText(Transform parent, string objectName, string text, float fontSize, Color color, TextAlignmentOptions alignment)
+        {
+            RectTransform rect = CreateRect(objectName, parent);
+            StretchRect(rect);
+            return CreateRectLabel(rect, text, fontSize, color, alignment);
+        }
+
+        private static TextMeshProUGUI CreateRectLabel(RectTransform rect, string text, float fontSize, Color color, TextAlignmentOptions alignment)
+        {
+            TextMeshProUGUI label = rect.gameObject.AddComponent<TextMeshProUGUI>();
+            label.text = text;
+            label.fontSize = fontSize;
+            label.color = color;
+            label.alignment = alignment;
+            label.raycastTarget = false;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+            if (TMP_Settings.defaultFontAsset != null)
+                label.font = TMP_Settings.defaultFontAsset;
             return label;
         }
 
@@ -414,6 +810,24 @@ namespace ArrowGame
         {
             Transform child = FindDeepChild(parent, name);
             return child != null ? child.GetComponent<Button>() : null;
+        }
+
+        private static Image GetImage(Transform parent, string name)
+        {
+            Transform child = FindDeepChild(parent, name);
+            return child != null ? child.GetComponent<Image>() : null;
+        }
+
+        private static RectTransform GetRect(Transform parent, string name)
+        {
+            Transform child = FindDeepChild(parent, name);
+            return child as RectTransform;
+        }
+
+        private static TMP_InputField GetInputField(Transform parent, string name)
+        {
+            Transform child = FindDeepChild(parent, name);
+            return child != null ? child.GetComponent<TMP_InputField>() : null;
         }
 
         private static Transform FindDeepChild(Transform parent, string childName)
@@ -475,6 +889,12 @@ namespace ArrowGame
             runtimeSprite = Sprite.Create(texture, new Rect(0f, 0f, 2f, 2f), new Vector2(0.5f, 0.5f), 2f);
             runtimeSprite.name = "MenuRuntimeSprite";
             return runtimeSprite;
+        }
+
+        private static void AddIfNotNull<T>(List<T> list, T value) where T : Object
+        {
+            if (value != null)
+                list.Add(value);
         }
     }
 }

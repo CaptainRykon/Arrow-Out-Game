@@ -206,6 +206,8 @@ namespace ArrowGame
 
         public void OnCollide()
         {
+            HapticManager.PlayFailure();
+            SoundManager.PlayArrowEscapeFail();
             heart--;
             if (heart < 0)
                 heart = 0;
@@ -282,6 +284,7 @@ namespace ArrowGame
             SetHintVisible(false, false);
             HideNoHintsPanel(false);
             ShowQuitPanel(false, false);
+            SoundManager.PlayLose();
             loseUI.SetActive(true);
 
             if (IsChallengeMode)
@@ -293,6 +296,7 @@ namespace ArrowGame
             if (isTransitioningToWin)
                 return;
 
+            SoundManager.PlayWin();
             StartCoroutine(WinCO(lastRemovedLine));
         }
 
@@ -954,6 +958,8 @@ namespace ArrowGame
         }
     }
 }
+
+
 
 
 

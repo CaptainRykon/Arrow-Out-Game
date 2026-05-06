@@ -7,9 +7,7 @@ namespace ArrowGame
 {
     public class LineController : MonoBehaviour
     {
-        // Points data of the line.
         public List<Vector2> points = new();
-        // Line movement speed.
         public float moveSpeed = 1f;
         public Transform arrow;
         public Color Color;
@@ -28,13 +26,13 @@ namespace ArrowGame
         private bool isBlockedAnimating;
         private Vector3 introStartLocalPosition;
         private bool hasIntroState;
+        private bool hasPlayedEscapeSuccessSound;
 
         public void Init()
         {
             Color = Color.black;
             moveSpeed = 30f;
 
-            // Use LineRenderer to draw the playable line.
             lineRenderer = GetComponent<LineRenderer>();
             lineRenderer.startColor = lineRenderer.endColor = Color;
             arrow.GetComponent<SpriteRenderer>().color = Color;
@@ -42,7 +40,6 @@ namespace ArrowGame
             edgeCollider2D = gameObject.AddComponent<EdgeCollider2D>();
             edgeCollider2D.points = points.ToArray();
 
-            // Add colliders to both ends for removal and collision checks.
             head = gameObject.AddComponent<BoxCollider2D>();
             rear = gameObject.AddComponent<BoxCollider2D>();
             head.size = rear.size = Vector2.one * .1f;
@@ -126,9 +123,7 @@ namespace ArrowGame
         {
             lineRenderer.positionCount = points.Count;
             for (int i = 0; i < points.Count; i++)
-            {
                 lineRenderer.SetPosition(i, points[i]);
-            }
 
             edgeCollider2D.points = points.ToArray();
             head.offset = points[0];
@@ -140,7 +135,6 @@ namespace ArrowGame
 
         public bool CanBeRemoved()
         {
-            // Use Raycast to detect if there is a line in front.
             return !TryGetBlockingHit(out _);
         }
 
@@ -164,7 +158,10 @@ namespace ArrowGame
                 if (TryGetBlockingHit(out RaycastHit2D blockingHit))
                 {
                     if (!isBlockedAnimating)
+                    {
+                        SoundManager.PlayWrongArrowClick();
                         StartCoroutine(OnBlockedHit(blockingHit));
+                    }
                     return;
                 }
 
@@ -175,22 +172,12 @@ namespace ArrowGame
         private void OnLineClicked()
         {
             isClicked = true;
+            hasPlayedEscapeSuccessSound = false;
+            SoundManager.PlayRightArrowClick();
             SetGuideVisible(false);
-            // Set layer to ignore raycast after removal starts.
             gameObject.layer = 2;
 
             ArrowGameManager.Instance.LineRemoved(this);
-        }
-
-        private IEnumerator OnCollide()
-        {
-            lineRenderer.startColor = lineRenderer.endColor = Color.red;
-            arrow.GetComponent<SpriteRenderer>().color = Color.red;
-            yield return new WaitForSeconds(.5f);
-            lineRenderer.startColor = lineRenderer.endColor = Color;
-            arrow.GetComponent<SpriteRenderer>().color = Color;
-
-            ArrowGameManager.Instance.OnCollide();
         }
 
         private IEnumerator OnBlockedHit(RaycastHit2D blockingHit)
@@ -302,7 +289,6 @@ namespace ArrowGame
 
             float distance = Mathf.Min(distanceToVerticalEdge, distanceToHorizontalEdge);
             distance = Mathf.Max(distance, 0f);
-
             return start + direction * distance;
         }
 
@@ -310,18 +296,15 @@ namespace ArrowGame
         {
             float moveDist = moveSpeed * Time.deltaTime;
             Vector2 dir1 = points[0] - points[1];
-            // Move the first point of the line.
             points[0] += dir1.normalized * moveDist;
             arrow.position = points[0];
 
             while (points.Count >= 2)
             {
-                // Move the last point of the line.
                 int len = points.Count;
                 Vector2 dir2 = (points[len - 2] - points[len - 1]).normalized;
                 float dist = Vector2.Distance(points[len - 2], points[len - 1]);
 
-                // If the tail movement fully consumes the last segment, drop that segment first.
                 if (dist < moveDist && points.Count > 2)
                 {
                     moveDist -= dist;
@@ -391,10 +374,18 @@ namespace ArrowGame
             {
                 UpdateLineMovement();
 
-                // Hide once the moving tail leaves the board area.
                 Vector2 lastPt = points[^1];
                 if (lastPt.x < -board || lastPt.x > board || lastPt.y < -board || lastPt.y > board)
+                {
+                    if (!hasPlayedEscapeSuccessSound)
+                    {
+                        hasPlayedEscapeSuccessSound = true;
+                        HapticManager.PlaySuccess();
+                        SoundManager.PlayArrowEscapeSuccess();
+                    }
+
                     gameObject.SetActive(false);
+                }
             }
         }
 
