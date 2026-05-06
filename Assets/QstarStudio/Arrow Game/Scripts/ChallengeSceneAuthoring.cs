@@ -47,14 +47,14 @@ namespace ArrowGame
         {
             ChallengeUiRefs refs = new();
 
-            refs.challengeMenuPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge Menu Panel", true).gameObject;
+            RemoveGeneratedChallengeMenuPanel(canvasRoot);
+            refs.challengeMenuPanel = null;
             refs.challengeHudPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge HUD Panel", false).gameObject;
             refs.countdownPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge Countdown Panel", false).gameObject;
             refs.streakPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge Streak Panel", false).gameObject;
             refs.leaderboardPanel = gameManager.winUI != null ? gameManager.winUI : FindOrCreateFullScreenPanel(canvasRoot, "Challenge Leaderboard Panel", false).gameObject;
 
-            BuildChallengeMenu(refs.challengeMenuPanel.transform, refs);
-            BuildCountdownPanel(refs.countdownPanel.transform, refs);
+                        BuildCountdownPanel(refs.countdownPanel.transform, refs);
             BuildHudPanel(refs.challengeHudPanel.transform, refs);
             BuildStreakPanel(refs.streakPanel.transform, refs);
             BuildLeaderboardPanel(refs.leaderboardPanel.transform, refs);
@@ -543,4 +543,6 @@ namespace ArrowGame
         }
     }
 }
+
+
 

@@ -69,6 +69,11 @@ namespace ArrowGame
             RefreshAllUi();
         }
 
+        private void Start()
+        {
+            if (challengeMenuPanel == null)
+                StartChallengeFlow();
+        }
         private void OnEnable()
         {
             if (arrowGameManager != null)
@@ -350,4 +355,6 @@ namespace ArrowGame
         }
     }
 }
+
+
 

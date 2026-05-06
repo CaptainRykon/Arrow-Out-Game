@@ -35,9 +35,14 @@ namespace ArrowGame
         [SerializeField] private TextMeshProUGUI currentLevelLabel;
 
         [Header("Challenge UI")]
+        [SerializeField] private string challengeTitlePrefix = "Weekly Challenge";
+        [SerializeField] private string[] challengePatternNames = { "Star", "Duck", "Bolt", "Crown", "Leaf", "Rocket", "Moon" };
+        [SerializeField] private TextMeshProUGUI challengeTitleText;
+        [SerializeField] private TextMeshProUGUI challengePatternText;
         [SerializeField] private TextMeshProUGUI challengeCycleTimerText;
         [SerializeField] private TextMeshProUGUI challengeChanceText;
         [SerializeField] private TextMeshProUGUI challengeNextChanceTimerText;
+        [SerializeField] private TextMeshProUGUI challengeStatusText;
         [SerializeField] private Button streakButton;
         [SerializeField] private GameObject streakPanel;
         [SerializeField] private Button closeStreakButton;
@@ -93,6 +98,12 @@ namespace ArrowGame
 
         public void PlayChallenge()
         {
+            if (!GameDataStore.CanPlayChallengeToday(DateTime.UtcNow))
+            {
+                RefreshChallengeUi();
+                return;
+            }
+
             SceneManager.LoadScene(ChallengeSceneName);
         }
 
@@ -174,22 +185,36 @@ namespace ArrowGame
             int playedDayCount = GameDataStore.GetPlayedChallengeDayCount(nowUtc);
             int currentDayIndex = GameDataStore.GetCurrentChallengeDayIndex(nowUtc);
             int streakMask = GameDataStore.GetChallengeStreakMask(nowUtc);
+            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
+            string patternName = challengePatternNames != null && challengePatternNames.Length > 0
+                ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
+                : $"Pattern {cycleIndex + 1}";
+
+            if (challengeTitleText != null)
+                challengeTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1}";
+
+            if (challengePatternText != null)
+                challengePatternText.text = patternName;
 
             if (challengeCycleTimerText != null)
                 challengeCycleTimerText.text = FormatCountdown(GameDataStore.GetCurrentChallengeTimeRemaining(nowUtc));
 
             if (challengeChanceText != null)
-            {
-                challengeChanceText.text = chancesRemaining > 0
-                    ? $"{chancesRemaining} chance left"
-                    : "0 chances left";
-            }
+                challengeChanceText.text = chancesRemaining > 0 ? $"{chancesRemaining} chance left" : "0 chances left";
 
             if (challengeNextChanceTimerText != null)
             {
                 challengeNextChanceTimerText.text = chancesRemaining > 0
                     ? "Chance Ready"
                     : FormatCountdown(GameDataStore.GetTimeUntilNextChallengeChance(nowUtc));
+            }
+
+            if (challengeStatusText != null)
+            {
+                challengeStatusText.text = chancesRemaining > 0
+                    ? "You have 1 chance available today."
+                    : "Today's challenge chance is used. Come back when the timer resets.";
             }
 
             if (challengePlayButton != null)
