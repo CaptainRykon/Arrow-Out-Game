@@ -23,6 +23,12 @@ namespace ArrowGame
         [SerializeField] private TextMeshProUGUI countdownText;
         [SerializeField] private float countdownStepDuration = 0.8f;
 
+        [Header("Loading")]
+        [SerializeField] private GameObject loadingPanel;
+        [SerializeField] private TextMeshProUGUI loadingStatusText;
+        [SerializeField] private Image loadingProgressFill;
+        [SerializeField] private float loadingScreenMinimumSeconds = 0.2f;
+
         [Header("Run HUD")]
         [SerializeField] private GameObject challengeHudPanel;
         [SerializeField] private TextMeshProUGUI runTimerText;
@@ -129,6 +135,30 @@ namespace ArrowGame
                 leaderboardPanel.SetActive(false);
             if (challengeHudPanel != null)
                 challengeHudPanel.SetActive(false);
+            SetLoadingState(true, 0.08f, "Preparing challenge...");
+            yield return null;
+            yield return new WaitForEndOfFrame();
+
+            float loadingStartTime = Time.realtimeSinceStartup;
+            if (arrowGameManager != null && arrowGameManager.LineGenerator != null && !arrowGameManager.LineGenerator.HasGeneratedBoard)
+            {
+                SetLoadingState(true, 0.22f, "Reading challenge image...");
+                yield return null;
+
+                SetLoadingState(true, 0.45f, "Building arrow puzzle...");
+                arrowGameManager.LineGenerator.GenerateBoard();
+                arrowGameManager.RefreshBoardAfterGeneration();
+
+                SetLoadingState(true, 0.88f, "Finalizing board...");
+                float loadingElapsed = Time.realtimeSinceStartup - loadingStartTime;
+                if (loadingElapsed < loadingScreenMinimumSeconds)
+                    yield return new WaitForSecondsRealtime(loadingScreenMinimumSeconds - loadingElapsed);
+            }
+
+            SetLoadingState(true, 1f, "Challenge ready");
+            yield return null;
+            SetLoadingState(false, 0f, string.Empty);
+
             if (countdownPanel != null)
                 countdownPanel.SetActive(true);
 
@@ -187,6 +217,7 @@ namespace ArrowGame
 
         private void PrepareInitialPanels()
         {
+            SetLoadingState(false, 0f, string.Empty);
             if (countdownPanel != null)
                 countdownPanel.SetActive(false);
             if (challengeHudPanel != null)
@@ -195,6 +226,18 @@ namespace ArrowGame
                 leaderboardPanel.SetActive(false);
             if (submitScoreButton != null)
                 submitScoreButton.interactable = false;
+        }
+
+        private void SetLoadingState(bool visible, float progress, string statusText)
+        {
+            if (loadingPanel != null)
+                loadingPanel.SetActive(visible);
+
+            if (loadingProgressFill != null)
+                loadingProgressFill.fillAmount = Mathf.Clamp01(progress);
+
+            if (loadingStatusText != null)
+                loadingStatusText.text = string.IsNullOrEmpty(statusText) ? string.Empty : statusText;
         }
 
         private void RefreshLeaderboardUi()

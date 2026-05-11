@@ -19,6 +19,7 @@ namespace ArrowGame
         private BoxCollider2D head;
         private BoxCollider2D rear;
         private LineRenderer lineRenderer;
+        private readonly List<LineRenderer> segmentRenderers = new();
         private LineRenderer guideRenderer;
         private Vector2 boardMin;
         private Vector2 boardMax;
@@ -27,6 +28,14 @@ namespace ArrowGame
         private Vector3 introStartLocalPosition;
         private bool hasIntroState;
         private bool hasPlayedEscapeSuccessSound;
+        private float segmentEndpointInset = 0.14f;
+        private float headEndpointInset = 0.28f;
+        private float tailEndpointInset = 0.22f;
+        private float arrowScaleMultiplier = 1.15f;
+        private float baseArrowScale = 1f;
+        private float cachedLineWidth = 0.2f;
+        private Color currentVisualColor = Color.black;
+        private float arrowHeadJoinOverlap = 0.08f;
 
         public void Init()
         {
@@ -34,19 +43,46 @@ namespace ArrowGame
             moveSpeed = 30f;
 
             lineRenderer = GetComponent<LineRenderer>();
-            lineRenderer.startColor = lineRenderer.endColor = Color;
-            arrow.GetComponent<SpriteRenderer>().color = Color;
+            if (lineRenderer == null)
+                lineRenderer = gameObject.AddComponent<LineRenderer>();
+            cachedLineWidth = lineRenderer.startWidth;
+            lineRenderer.enabled = false;
+            if (arrow != null)
+                baseArrowScale = Mathf.Max(arrow.localScale.x, 0.0001f);
+            SetVisualColor(Color);
+            UpdateArrowScale();
 
             edgeCollider2D = gameObject.AddComponent<EdgeCollider2D>();
             edgeCollider2D.points = points.ToArray();
 
             head = gameObject.AddComponent<BoxCollider2D>();
             rear = gameObject.AddComponent<BoxCollider2D>();
-            head.size = rear.size = Vector2.one * .1f;
+            float capColliderSize = Mathf.Max(0.08f, cachedLineWidth * 0.8f);
+            head.size = rear.size = Vector2.one * capColliderSize;
             head.offset = points[0];
             rear.offset = points[^1];
 
-            ArrowGameManager.Instance.AddLine(this);
+            ArrowGameManager manager = ArrowGameManager.Instance ?? FindFirstObjectByType<ArrowGameManager>();
+            if (manager != null)
+            {
+                ArrowGameManager.Instance = manager;
+                manager.AddLine(this);
+            }
+            else
+            {
+                Debug.LogWarning("LineController could not find ArrowGameManager during Init.");
+            }
+        }
+
+        public void ConfigureVisualSpacing(float segmentInset, float headInset, float tailInset, float arrowScaleBoost)
+        {
+            segmentEndpointInset = Mathf.Max(0f, segmentInset);
+            headEndpointInset = Mathf.Max(segmentEndpointInset, headInset);
+            tailEndpointInset = Mathf.Max(segmentEndpointInset, tailInset);
+            arrowScaleMultiplier = Mathf.Max(0.5f, arrowScaleBoost);
+            if (arrow != null)
+                baseArrowScale = Mathf.Max(arrow.localScale.x, 0.0001f);
+            UpdateArrowScale();
         }
 
         public IEnumerator PlayIntroAnimation(float duration)
@@ -121,13 +157,10 @@ namespace ArrowGame
 
         public void UpdateLineRender()
         {
-            lineRenderer.positionCount = points.Count;
-            for (int i = 0; i < points.Count; i++)
-                lineRenderer.SetPosition(i, points[i]);
-
             edgeCollider2D.points = points.ToArray();
             head.offset = points[0];
             rear.offset = points[^1];
+            RebuildSegmentRenderers();
 
             if (guideVisible)
                 UpdateGuideLineGeometry();
@@ -196,11 +229,10 @@ namespace ArrowGame
             yield return AnimateHeadPosition(targetHead, originalHead, returnDuration);
 
             points[0] = originalHead;
-            arrow.position = originalHead;
+            SetArrowLocalPosition(originalHead);
             UpdateLineRender();
 
-            lineRenderer.startColor = lineRenderer.endColor = Color;
-            arrow.GetComponent<SpriteRenderer>().color = Color;
+            SetVisualColor(Color);
 
             ArrowGameManager.Instance.OnCollide();
             isBlockedAnimating = false;
@@ -208,11 +240,9 @@ namespace ArrowGame
 
         private IEnumerator ShowHintCO()
         {
-            lineRenderer.startColor = lineRenderer.endColor = Color.yellow;
-            arrow.GetComponent<SpriteRenderer>().color = Color.yellow;
+            SetVisualColor(Color.yellow);
             yield return new WaitForSeconds(1.5f);
-            lineRenderer.startColor = lineRenderer.endColor = Color;
-            arrow.GetComponent<SpriteRenderer>().color = Color;
+            SetVisualColor(Color);
         }
 
         private float CheckDistanceToLine(Vector2 point)
@@ -297,7 +327,7 @@ namespace ArrowGame
             float moveDist = moveSpeed * Time.deltaTime;
             Vector2 dir1 = points[0] - points[1];
             points[0] += dir1.normalized * moveDist;
-            arrow.position = points[0];
+            SetArrowLocalPosition(points[0]);
 
             while (points.Count >= 2)
             {
@@ -324,7 +354,7 @@ namespace ArrowGame
             if (duration <= 0f)
             {
                 points[0] = to;
-                arrow.position = to;
+                SetArrowLocalPosition(to);
                 UpdateLineRender();
                 yield break;
             }
@@ -335,20 +365,19 @@ namespace ArrowGame
                 elapsed += Time.deltaTime;
                 float t = Mathf.Clamp01(elapsed / duration);
                 points[0] = Vector2.Lerp(from, to, t);
-                arrow.position = points[0];
+                SetArrowLocalPosition(points[0]);
                 UpdateLineRender();
                 yield return null;
             }
 
             points[0] = to;
-            arrow.position = to;
+            SetArrowLocalPosition(to);
             UpdateLineRender();
         }
 
         private void SetBlockedHighlight(Color color)
         {
-            lineRenderer.startColor = lineRenderer.endColor = color;
-            arrow.GetComponent<SpriteRenderer>().color = color;
+            SetVisualColor(color);
         }
 
         private void Update()
@@ -392,6 +421,107 @@ namespace ArrowGame
         private bool IsPointerOverUI()
         {
             return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        }
+
+        private void RebuildSegmentRenderers()
+        {
+            int segmentCount = Mathf.Max(0, points.Count - 1);
+            while (segmentRenderers.Count < segmentCount)
+                segmentRenderers.Add(CreateSegmentRenderer(segmentRenderers.Count));
+
+            for (int i = 0; i < segmentRenderers.Count; i++)
+                segmentRenderers[i].enabled = i < segmentCount;
+
+            for (int i = 0; i < segmentCount; i++)
+            {
+                LineRenderer segmentRenderer = segmentRenderers[i];
+                Vector2 a = points[i];
+                Vector2 b = points[i + 1];
+                Vector2 direction = b - a;
+                float length = direction.magnitude;
+                if (length <= 0.0001f)
+                {
+                    segmentRenderer.enabled = false;
+                    continue;
+                }
+
+                Vector2 unit = direction / length;
+                float startInset = 0f;
+                float endInset = i == segmentCount - 1 ? tailEndpointInset : 0f;
+                float maxInset = Mathf.Max(0f, length * 0.5f - 0.01f);
+                startInset = Mathf.Min(startInset, maxInset);
+                endInset = Mathf.Min(endInset, maxInset);
+
+                Vector2 renderStart = a + unit * startInset;
+                Vector2 renderEnd = b - unit * endInset;
+                if ((renderEnd - renderStart).sqrMagnitude <= 0.0004f)
+                {
+                    segmentRenderer.enabled = false;
+                    continue;
+                }
+
+                segmentRenderer.enabled = true;
+                segmentRenderer.positionCount = 2;
+                segmentRenderer.SetPosition(0, renderStart);
+                segmentRenderer.SetPosition(1, renderEnd);
+                segmentRenderer.startColor = currentVisualColor;
+                segmentRenderer.endColor = currentVisualColor;
+            }
+        }
+
+        private LineRenderer CreateSegmentRenderer(int index)
+        {
+            GameObject segmentObject = new($"Segment_{index}");
+            segmentObject.transform.SetParent(transform, false);
+
+            LineRenderer segmentRenderer = segmentObject.AddComponent<LineRenderer>();
+            segmentRenderer.material = lineRenderer.material;
+            segmentRenderer.useWorldSpace = false;
+            segmentRenderer.alignment = lineRenderer.alignment;
+            segmentRenderer.textureMode = lineRenderer.textureMode;
+            segmentRenderer.widthMultiplier = 1f;
+            segmentRenderer.startWidth = cachedLineWidth;
+            segmentRenderer.endWidth = cachedLineWidth;
+            segmentRenderer.numCapVertices = 8;
+            segmentRenderer.numCornerVertices = 0;
+            segmentRenderer.sortingOrder = lineRenderer.sortingOrder;
+            segmentRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            segmentRenderer.receiveShadows = false;
+            segmentRenderer.enabled = false;
+            return segmentRenderer;
+        }
+
+        private void SetVisualColor(Color color)
+        {
+            currentVisualColor = color;
+
+            if (arrow != null)
+            {
+                SpriteRenderer arrowRenderer = arrow.GetComponent<SpriteRenderer>();
+                if (arrowRenderer != null)
+                    arrowRenderer.color = color;
+            }
+
+            for (int i = 0; i < segmentRenderers.Count; i++)
+            {
+                segmentRenderers[i].startColor = color;
+                segmentRenderers[i].endColor = color;
+            }
+        }
+
+        private void UpdateArrowScale()
+        {
+            if (arrow == null)
+                return;
+
+            arrow.localScale = Vector3.one * baseArrowScale * arrowScaleMultiplier;
+            arrowHeadJoinOverlap = Mathf.Max(cachedLineWidth * 0.9f, arrow.localScale.x * 0.08f);
+        }
+
+        private void SetArrowLocalPosition(Vector2 position)
+        {
+            if (arrow != null)
+                arrow.localPosition = position;
         }
     }
 }

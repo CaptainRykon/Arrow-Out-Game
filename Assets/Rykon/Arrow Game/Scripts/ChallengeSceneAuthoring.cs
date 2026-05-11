@@ -48,15 +48,49 @@ namespace ArrowGame
             ChallengeUiRefs refs = new();
 
             RemoveGeneratedChallengeMenuPanel(canvasRoot);
+            refs.loadingPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge Loading Panel", false).gameObject;
             refs.countdownPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge Countdown Panel", false).gameObject;
             refs.challengeHudPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge HUD Panel", false).gameObject;
             refs.leaderboardPanel = gameManager.winUI != null ? gameManager.winUI : FindOrCreateFullScreenPanel(canvasRoot, "Challenge Leaderboard Panel", false).gameObject;
 
+            BuildLoadingPanel(refs.loadingPanel.transform, refs);
             BuildCountdownPanel(refs.countdownPanel.transform, refs);
             BuildHudPanel(refs.challengeHudPanel.transform, refs);
             BuildLeaderboardPanel(refs.leaderboardPanel.transform, refs);
 
             return refs;
+        }
+
+        private void BuildLoadingPanel(Transform panelRoot, ChallengeUiRefs refs)
+        {
+            RectTransform card = FindOrCreateCard(panelRoot, "Loading Card", new Vector2(720f, 260f), panelSoftColor);
+            VerticalLayoutGroup layout = EnsureVerticalLayout(card.gameObject, new RectOffset(42, 42, 40, 40), 18f);
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childForceExpandHeight = false;
+
+            CreateOrUpdateLabel(card, "Loading Title", "Preparing Challenge", 44f, textPrimaryColor, out _);
+            CreateOrUpdateLabel(card, "Loading Status", "Building arrow puzzle...", 28f, textSecondaryColor, out refs.loadingStatusText, new Vector2(0f, 58f));
+
+            RectTransform barTrack = FindOrCreateRect(card, "Loading Bar Track");
+            LayoutElement barTrackLayout = barTrack.gameObject.GetComponent<LayoutElement>() ?? barTrack.gameObject.AddComponent<LayoutElement>();
+            barTrackLayout.preferredHeight = 34f;
+            barTrackLayout.flexibleWidth = 1f;
+
+            Image barTrackImage = barTrack.GetComponent<Image>() ?? barTrack.gameObject.AddComponent<Image>();
+            barTrackImage.sprite = GetRuntimeSprite();
+            barTrackImage.color = new Color(0.14f, 0.16f, 0.28f, 0.94f);
+            barTrackImage.type = Image.Type.Sliced;
+
+            RectTransform fillRect = FindOrCreateRect(barTrack, "Loading Bar Fill");
+            StretchRect(fillRect);
+            Image fillImage = fillRect.GetComponent<Image>() ?? fillRect.gameObject.AddComponent<Image>();
+            fillImage.sprite = GetRuntimeSprite();
+            fillImage.color = accentColor;
+            fillImage.type = Image.Type.Filled;
+            fillImage.fillMethod = Image.FillMethod.Horizontal;
+            fillImage.fillOrigin = (int)Image.OriginHorizontal.Left;
+            fillImage.fillAmount = 0f;
+            refs.loadingProgressFill = fillImage;
         }
 
         private void BuildCountdownPanel(Transform panelRoot, ChallengeUiRefs refs)
@@ -153,6 +187,9 @@ namespace ArrowGame
 #if UNITY_EDITOR
             UnityEditor.SerializedObject serializedObject = new(controller);
             Assign(serializedObject, "arrowGameManager", gameManager);
+            Assign(serializedObject, "loadingPanel", refs.loadingPanel);
+            Assign(serializedObject, "loadingStatusText", refs.loadingStatusText);
+            Assign(serializedObject, "loadingProgressFill", refs.loadingProgressFill);
             Assign(serializedObject, "countdownPanel", refs.countdownPanel);
             Assign(serializedObject, "countdownText", refs.countdownText);
             Assign(serializedObject, "challengeHudPanel", refs.challengeHudPanel);
@@ -380,9 +417,12 @@ namespace ArrowGame
 
         private sealed class ChallengeUiRefs
         {
+            public GameObject loadingPanel;
             public GameObject countdownPanel;
             public GameObject challengeHudPanel;
             public GameObject leaderboardPanel;
+            public Image loadingProgressFill;
+            public TextMeshProUGUI loadingStatusText;
             public TextMeshProUGUI countdownText;
             public TextMeshProUGUI runTimerText;
             public TextMeshProUGUI leaderboardTitleText;

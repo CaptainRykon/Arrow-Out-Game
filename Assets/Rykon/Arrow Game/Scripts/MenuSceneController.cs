@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ArrowGame.Data;
 using TMPro;
 using UnityEngine;
@@ -99,8 +100,14 @@ namespace ArrowGame
         private const float ChallengeUiRefreshInterval = 0.25f;
         private float nextChallengeUiRefreshTime;
 
+        private void OnValidate()
+        {
+            TryAssignSettingsReferencesFromPanel();
+        }
+
         private void Awake()
         {
+            TryAssignSettingsReferencesFromPanel();
             WireButtons();
             WireSettingsControls();
             CloseStreakPanel();
@@ -111,6 +118,8 @@ namespace ArrowGame
 
         private void OnEnable()
         {
+            TryAssignSettingsReferencesFromPanel();
+            WireSettingsControls();
             nextChallengeUiRefreshTime = 0f;
             RefreshLevelLabel();
             RefreshChallengeUi();
@@ -193,6 +202,7 @@ namespace ArrowGame
 
         private void WireSettingsControls()
         {
+            TryAssignSettingsReferencesFromPanel();
             RegisterButton(vibrationToggleButton, ToggleVibration);
             RegisterButton(soundToggleButton, ToggleSound);
             RegisterButton(darkModeToggleButton, ToggleDarkMode);
@@ -207,6 +217,55 @@ namespace ArrowGame
                 userNameInputField.onEndEdit.RemoveListener(HandleUserNameChanged);
                 userNameInputField.onEndEdit.AddListener(HandleUserNameChanged);
             }
+        }
+
+        private void TryAssignSettingsReferencesFromPanel()
+        {
+            if (settingsPanel == null)
+                return;
+
+            userNameInputField = FindFirstInputField(settingsPanel, userNameInputField);
+
+            vibrationToggleButton = FindButtonByKeywords(settingsPanel, vibrationToggleButton, "vibration", "vibrations");
+            vibrationToggleBackground = FindButtonBackground(vibrationToggleButton, vibrationToggleBackground);
+            vibrationToggleKnob = FindToggleKnob(vibrationToggleButton, vibrationToggleKnob);
+
+            soundToggleButton = FindButtonByKeywords(settingsPanel, soundToggleButton, "sound", "sounds");
+            soundToggleBackground = FindButtonBackground(soundToggleButton, soundToggleBackground);
+            soundToggleKnob = FindToggleKnob(soundToggleButton, soundToggleKnob);
+
+            darkModeToggleButton = FindButtonByKeywords(settingsPanel, darkModeToggleButton, "dark");
+            darkModeToggleBackground = FindButtonBackground(darkModeToggleButton, darkModeToggleBackground);
+            darkModeToggleKnob = FindToggleKnob(darkModeToggleButton, darkModeToggleKnob);
+
+            privacyButton = FindButtonByKeywords(settingsPanel, privacyButton, "privacy");
+            termsButton = FindButtonByKeywords(settingsPanel, termsButton, "terms");
+            faqButton = FindButtonByKeywords(settingsPanel, faqButton, "faq");
+            telegramButton = FindButtonByKeywords(settingsPanel, telegramButton, "telegram");
+            twitterButton = FindButtonByKeywords(settingsPanel, twitterButton, "twitter");
+
+            themeSurfaceImages = BuildSurfaceThemeImages();
+            themeAccentImages = BuildAccentThemeImages();
+            themePrimaryTexts = settingsPanel.GetComponentsInChildren<TextMeshProUGUI>(true);
+        }
+
+        private Image[] BuildSurfaceThemeImages()
+        {
+            List<Image> images = new();
+            AddIfNotNull(images, settingsPanel != null ? settingsPanel.GetComponent<Image>() : null);
+            AddIfNotNull(images, userNameInputField != null ? userNameInputField.GetComponent<Image>() : null);
+            return images.ToArray();
+        }
+
+        private Image[] BuildAccentThemeImages()
+        {
+            List<Image> images = new();
+            AddIfNotNull(images, FindButtonBackground(privacyButton, null));
+            AddIfNotNull(images, FindButtonBackground(termsButton, null));
+            AddIfNotNull(images, FindButtonBackground(faqButton, null));
+            AddIfNotNull(images, FindButtonBackground(telegramButton, null));
+            AddIfNotNull(images, FindButtonBackground(twitterButton, null));
+            return images.ToArray();
         }
 
         private static void RegisterButton(Button button, UnityEngine.Events.UnityAction action)
@@ -353,6 +412,96 @@ namespace ArrowGame
         {
             if (button != null)
                 button.interactable = !string.IsNullOrWhiteSpace(url);
+        }
+
+        private static TMP_InputField FindFirstInputField(GameObject root, TMP_InputField current)
+        {
+            if (current != null)
+                return current;
+
+            return root != null ? root.GetComponentInChildren<TMP_InputField>(true) : null;
+        }
+
+        private static Button FindButtonByKeywords(GameObject root, Button current, params string[] keywords)
+        {
+            if (root == null)
+                return current;
+
+            if (ButtonMatches(current, keywords))
+                return current;
+
+            Button[] buttons = root.GetComponentsInChildren<Button>(true);
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                if (ButtonMatches(buttons[i], keywords))
+                    return buttons[i];
+            }
+
+            return current;
+        }
+
+        private static bool ButtonMatches(Button button, params string[] keywords)
+        {
+            if (button == null || keywords == null || keywords.Length == 0)
+                return false;
+
+            string searchText = BuildSearchText(button);
+            for (int i = 0; i < keywords.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(keywords[i]) && searchText.Contains(keywords[i].ToLowerInvariant()))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static string BuildSearchText(Component component)
+        {
+            if (component == null)
+                return string.Empty;
+
+            string searchText = component.name.ToLowerInvariant();
+            TextMeshProUGUI[] labels = component.GetComponentsInChildren<TextMeshProUGUI>(true);
+            for (int i = 0; i < labels.Length; i++)
+            {
+                if (labels[i] != null && !string.IsNullOrWhiteSpace(labels[i].text))
+                    searchText += " " + labels[i].text.ToLowerInvariant();
+            }
+
+            return searchText;
+        }
+
+        private static Image FindButtonBackground(Button button, Image fallback)
+        {
+            if (button == null)
+                return fallback;
+
+            if (button.targetGraphic is Image targetImage)
+                return targetImage;
+
+            Image image = button.GetComponent<Image>();
+            return image != null ? image : fallback;
+        }
+
+        private static RectTransform FindToggleKnob(Button button, RectTransform fallback)
+        {
+            if (button == null)
+                return fallback;
+
+            Image[] images = button.GetComponentsInChildren<Image>(true);
+            for (int i = 0; i < images.Length; i++)
+            {
+                if (images[i] != null && images[i].transform != button.transform)
+                    return images[i].rectTransform;
+            }
+
+            return fallback;
+        }
+
+        private static void AddIfNotNull<T>(List<T> list, T value) where T : class
+        {
+            if (value != null && !list.Contains(value))
+                list.Add(value);
         }
 
         private void Update()

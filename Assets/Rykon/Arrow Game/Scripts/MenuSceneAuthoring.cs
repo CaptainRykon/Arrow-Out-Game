@@ -150,23 +150,6 @@ namespace ArrowGame
             if (settingsPanel == null)
                 return;
 
-            Image settingsPanelImage = settingsPanel.GetComponent<Image>();
-            if (settingsPanelImage != null && settingsPanelImage.sprite == null)
-            {
-                settingsPanelImage.sprite = GetRuntimeSprite();
-                settingsPanelImage.type = Image.Type.Sliced;
-                settingsPanelImage.color = settingsPanelColor;
-            }
-
-            Transform settingsContent = settingsPanel.Find("Settings Content") ?? FindDeepChild(settingsPanel, "Settings Content");
-            if (forceRebuild || NeedsSettingsMenuRebuild(settingsContent))
-            {
-                if (settingsContent != null)
-                    DestroyEditorSafe(settingsContent.gameObject);
-
-                BuildSettingsPanel(settingsPanel);
-            }
-
             SettingsMenuReferences refs = CollectSettingsReferences(settingsPanel);
             if (!HasRequiredSettingsReferences(refs))
                 return;
@@ -191,21 +174,6 @@ namespace ArrowGame
                    FindDeepChild(challengeMenuPanel, "Status Text") == null ||
                    FindDeepChild(challengeMenuPanel, "Streak Button") == null ||
                    FindDeepChild(challengeMenuPanel, "Play Challenge Button") == null;
-        }
-
-        private bool NeedsSettingsMenuRebuild(Transform settingsContent)
-        {
-            return settingsContent == null ||
-                   FindDeepChild(settingsContent, "Settings Title") == null ||
-                   FindDeepChild(settingsContent, "Username Input Field") == null ||
-                   FindDeepChild(settingsContent, "Vibrations Toggle Button") == null ||
-                   FindDeepChild(settingsContent, "Sounds Toggle Button") == null ||
-                   FindDeepChild(settingsContent, "Dark Mode Toggle Button") == null ||
-                   FindDeepChild(settingsContent, "Privacy Button") == null ||
-                   FindDeepChild(settingsContent, "Terms & Conditions Button") == null ||
-                   FindDeepChild(settingsContent, "FAQ Button") == null ||
-                   FindDeepChild(settingsContent, "Join Telegram Button") == null ||
-                   FindDeepChild(settingsContent, "Twitter Button") == null;
         }
 
         private void BuildChallengeMenuPanel(Transform challengePanel)
@@ -410,59 +378,40 @@ namespace ArrowGame
         private SettingsMenuReferences CollectSettingsReferences(Transform settingsPanel)
         {
             SettingsMenuReferences refs = new();
-            Transform content = settingsPanel.Find("Settings Content") ?? FindDeepChild(settingsPanel, "Settings Content");
-            if (content == null)
+            if (settingsPanel == null)
                 return refs;
 
-            refs.userNameInputField = GetInputField(content, "Username Input Field");
-            refs.vibrationToggleButton = GetButton(content, "Vibrations Toggle Button");
-            refs.vibrationToggleBackground = GetImage(content, "Vibrations Toggle Button");
-            refs.vibrationToggleKnob = GetRect(content, "Vibrations Toggle Knob");
-            refs.soundToggleButton = GetButton(content, "Sounds Toggle Button");
-            refs.soundToggleBackground = GetImage(content, "Sounds Toggle Button");
-            refs.soundToggleKnob = GetRect(content, "Sounds Toggle Knob");
-            refs.darkModeToggleButton = GetButton(content, "Dark Mode Toggle Button");
-            refs.darkModeToggleBackground = GetImage(content, "Dark Mode Toggle Button");
-            refs.darkModeToggleKnob = GetRect(content, "Dark Mode Toggle Knob");
-            refs.privacyButton = GetButton(content, "Privacy Button");
-            refs.termsButton = GetButton(content, "Terms & Conditions Button");
-            refs.faqButton = GetButton(content, "FAQ Button");
-            refs.telegramButton = GetButton(content, "Join Telegram Button");
-            refs.twitterButton = GetButton(content, "Twitter Button");
+            refs.userNameInputField = settingsPanel.GetComponentInChildren<TMP_InputField>(true);
+            refs.vibrationToggleButton = FindButtonByKeywords(settingsPanel, "vibration", "vibrations");
+            refs.vibrationToggleBackground = FindButtonBackground(refs.vibrationToggleButton);
+            refs.vibrationToggleKnob = FindToggleKnob(refs.vibrationToggleButton);
+            refs.soundToggleButton = FindButtonByKeywords(settingsPanel, "sound", "sounds");
+            refs.soundToggleBackground = FindButtonBackground(refs.soundToggleButton);
+            refs.soundToggleKnob = FindToggleKnob(refs.soundToggleButton);
+            refs.darkModeToggleButton = FindButtonByKeywords(settingsPanel, "dark");
+            refs.darkModeToggleBackground = FindButtonBackground(refs.darkModeToggleButton);
+            refs.darkModeToggleKnob = FindToggleKnob(refs.darkModeToggleButton);
+            refs.privacyButton = FindButtonByKeywords(settingsPanel, "privacy");
+            refs.termsButton = FindButtonByKeywords(settingsPanel, "terms");
+            refs.faqButton = FindButtonByKeywords(settingsPanel, "faq");
+            refs.telegramButton = FindButtonByKeywords(settingsPanel, "telegram");
+            refs.twitterButton = FindButtonByKeywords(settingsPanel, "twitter");
 
             List<Image> surfaceImages = new();
-            AddIfNotNull(surfaceImages, GetImage(content, "Preferences Card"));
-            AddIfNotNull(surfaceImages, GetImage(content, "Links Card"));
-            AddIfNotNull(surfaceImages, GetImage(content, "Username Input Field"));
+            AddIfNotNull(surfaceImages, settingsPanel.GetComponent<Image>());
+            AddIfNotNull(surfaceImages, refs.userNameInputField != null ? refs.userNameInputField.GetComponent<Image>() : null);
             refs.themeSurfaceImages = surfaceImages.ToArray();
 
             List<Image> accentImages = new();
-            AddIfNotNull(accentImages, GetImage(content, "Privacy Button"));
-            AddIfNotNull(accentImages, GetImage(content, "Terms & Conditions Button"));
-            AddIfNotNull(accentImages, GetImage(content, "FAQ Button"));
-            AddIfNotNull(accentImages, GetImage(content, "Join Telegram Button"));
-            AddIfNotNull(accentImages, GetImage(content, "Twitter Button"));
+            AddIfNotNull(accentImages, refs.privacyButton != null ? FindButtonBackground(refs.privacyButton) : null);
+            AddIfNotNull(accentImages, refs.termsButton != null ? FindButtonBackground(refs.termsButton) : null);
+            AddIfNotNull(accentImages, refs.faqButton != null ? FindButtonBackground(refs.faqButton) : null);
+            AddIfNotNull(accentImages, refs.telegramButton != null ? FindButtonBackground(refs.telegramButton) : null);
+            AddIfNotNull(accentImages, refs.twitterButton != null ? FindButtonBackground(refs.twitterButton) : null);
             refs.themeAccentImages = accentImages.ToArray();
 
-            List<TextMeshProUGUI> primaryTexts = new();
-            AddIfNotNull(primaryTexts, GetText(content, "Settings Title"));
-            AddIfNotNull(primaryTexts, GetText(content, "Username Text"));
-            AddIfNotNull(primaryTexts, GetText(content, "Vibrations Label"));
-            AddIfNotNull(primaryTexts, GetText(content, "Sounds Label"));
-            AddIfNotNull(primaryTexts, GetText(content, "Dark Mode Label"));
-            AddIfNotNull(primaryTexts, GetText(content, "Privacy Label"));
-            AddIfNotNull(primaryTexts, GetText(content, "Terms & Conditions Label"));
-            AddIfNotNull(primaryTexts, GetText(content, "FAQ Label"));
-            AddIfNotNull(primaryTexts, GetText(content, "Join Telegram Label"));
-            AddIfNotNull(primaryTexts, GetText(content, "Twitter Label"));
-            refs.themePrimaryTexts = primaryTexts.ToArray();
-
-            List<TextMeshProUGUI> secondaryTexts = new();
-            AddIfNotNull(secondaryTexts, GetText(content, "Username Label"));
-            AddIfNotNull(secondaryTexts, GetText(content, "Preferences Heading"));
-            AddIfNotNull(secondaryTexts, GetText(content, "More Heading"));
-            AddIfNotNull(secondaryTexts, GetText(content, "Username Placeholder"));
-            refs.themeSecondaryTexts = secondaryTexts.ToArray();
+            refs.themePrimaryTexts = settingsPanel.GetComponentsInChildren<TextMeshProUGUI>(true);
+            refs.themeSecondaryTexts = new TextMeshProUGUI[0];
 
             return refs;
         }
@@ -828,6 +777,78 @@ namespace ArrowGame
         {
             Transform child = FindDeepChild(parent, name);
             return child != null ? child.GetComponent<TMP_InputField>() : null;
+        }
+
+        private static Button FindButtonByKeywords(Transform root, params string[] keywords)
+        {
+            if (root == null || keywords == null || keywords.Length == 0)
+                return null;
+
+            Button[] buttons = root.GetComponentsInChildren<Button>(true);
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                if (ButtonMatches(buttons[i], keywords))
+                    return buttons[i];
+            }
+
+            return null;
+        }
+
+        private static bool ButtonMatches(Button button, params string[] keywords)
+        {
+            if (button == null)
+                return false;
+
+            string searchText = BuildSearchText(button);
+            for (int i = 0; i < keywords.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(keywords[i]) && searchText.Contains(keywords[i].ToLowerInvariant()))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static string BuildSearchText(Component component)
+        {
+            if (component == null)
+                return string.Empty;
+
+            string searchText = component.name.ToLowerInvariant();
+            TextMeshProUGUI[] labels = component.GetComponentsInChildren<TextMeshProUGUI>(true);
+            for (int i = 0; i < labels.Length; i++)
+            {
+                if (labels[i] != null && !string.IsNullOrWhiteSpace(labels[i].text))
+                    searchText += " " + labels[i].text.ToLowerInvariant();
+            }
+
+            return searchText;
+        }
+
+        private static Image FindButtonBackground(Button button)
+        {
+            if (button == null)
+                return null;
+
+            if (button.targetGraphic is Image targetImage)
+                return targetImage;
+
+            return button.GetComponent<Image>();
+        }
+
+        private static RectTransform FindToggleKnob(Button button)
+        {
+            if (button == null)
+                return null;
+
+            Image[] images = button.GetComponentsInChildren<Image>(true);
+            for (int i = 0; i < images.Length; i++)
+            {
+                if (images[i] != null && images[i].transform != button.transform)
+                    return images[i].rectTransform;
+            }
+
+            return null;
         }
 
         private static Transform FindDeepChild(Transform parent, string childName)
