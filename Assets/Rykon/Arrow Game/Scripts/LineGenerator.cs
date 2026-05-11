@@ -626,15 +626,18 @@ namespace ArrowGame
 
             List<PathCandidate> alive = new(candidates);
             bool removedAny = true;
+            int localWidth = Mathf.Max(width, 1);
+            int localHeight = Mathf.Max(height, 1);
 
             while (removedAny && alive.Count > 0)
             {
                 removedAny = false;
                 List<int> removable = new();
+                bool[,] occupiedGrid = BuildOccupiedGrid(alive, localWidth, localHeight);
 
                 for (int i = 0; i < alive.Count; i++)
                 {
-                    if (CanCandidateEscape(alive[i], alive, i))
+                    if (CanCandidateEscape(alive[i], occupiedGrid, localWidth, localHeight))
                         removable.Add(i);
                 }
 
@@ -695,33 +698,46 @@ namespace ArrowGame
             return true;
         }
 
-        private bool TryArrangeFullSolvableSet(List<PathCandidate> candidates, bool[,] activeMask, out List<PathCandidate> arranged)
+        private bool CanCandidateEscape(PathCandidate source, bool[,] occupiedGrid, int localWidth, int localHeight)
         {
-            arranged = null;
-            if (candidates == null || candidates.Count == 0)
-            {
-                arranged = new List<PathCandidate>();
-                return true;
-            }
+            if (source == null || source.Cells == null || source.Cells.Count < 2)
+                return false;
 
-            HashSet<int> remaining = new();
-            for (int i = 0; i < candidates.Count; i++)
-                remaining.Add(i);
+            Vector2Int outward = source.GetHeadOutwardDirection();
+            if (outward == Vector2Int.zero)
+                return false;
 
-            List<PathCandidate> placed = new();
-            while (remaining.Count > 0)
+            Vector2Int cursor = source.Cells[0] + outward;
+            while (IsInside(cursor, localWidth, localHeight))
             {
-                List<CandidatePlacement> options = BuildPlacementOptions(candidates, remaining, placed, null, activeMask, int.MaxValue);
-                if (options.Count == 0)
+                if (source.ContainsOccupiedCell(cursor))
                     return false;
 
-                CandidatePlacement chosen = ChoosePlacementOption(options, false);
-                placed.Add(chosen.Candidate);
-                remaining.Remove(chosen.SourceIndex);
+                if (occupiedGrid != null && occupiedGrid[cursor.x, cursor.y] && cursor != source.Cells[0])
+                    return false;
+
+                cursor += outward;
             }
 
-            arranged = placed;
             return true;
+        }
+
+        private bool[,] BuildOccupiedGrid(List<PathCandidate> candidates, int localWidth, int localHeight)
+        {
+            bool[,] occupied = new bool[localWidth, localHeight];
+            if (candidates == null)
+                return occupied;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                PathCandidate candidate = candidates[i];
+                if (candidate == null)
+                    continue;
+
+                MarkCandidateOccupied(candidate, occupied);
+            }
+
+            return occupied;
         }
 
         private float GetIntersectionDistance(Vector2 rayStart, Vector2 direction, List<Vector2> points)
@@ -1545,6 +1561,7 @@ namespace ArrowGame
             List<PathCandidate> best = new();
             int bestOccupiedCount = -1;
             int maxOccupiedCells = activeMask.GetLength(0) * activeMask.GetLength(1);
+            int stagnantAttempts = 0;
 
             for (int attempt = 0; attempt < SubsetBuildAttempts; attempt++)
             {
@@ -1561,6 +1578,15 @@ namespace ArrowGame
                 {
                     best = picked;
                     bestOccupiedCount = occupiedCount;
+                    stagnantAttempts = 0;
+                    if (bestOccupiedCount >= maxOccupiedCells - 2)
+                        break;
+                }
+                else
+                {
+                    stagnantAttempts++;
+                    if (best.Count > 0 && stagnantAttempts >= AttemptPlateauLimit)
+                        break;
                 }
             }
 
@@ -1579,7 +1605,10 @@ namespace ArrowGame
             for (int i = 0; i < candidates.Count; i++)
                 remaining.Add(i);
 
+            int localWidth = activeMask.GetLength(0);
+            int localHeight = activeMask.GetLength(1);
             bool[,] occupied = enforceSpacing ? new bool[activeMask.GetLength(0), activeMask.GetLength(1)] : null;
+            bool[,] blockerOccupied = new bool[localWidth, localHeight];
             List<PathCandidate> picked = new();
             int occupiedCount = 0;
 
@@ -1588,7 +1617,7 @@ namespace ArrowGame
                 List<CandidatePlacement> options = BuildPlacementOptions(
                     candidates,
                     remaining,
-                    picked,
+                    blockerOccupied,
                     occupied,
                     activeMask,
                     maximumOccupiedCells - occupiedCount);
@@ -1603,6 +1632,7 @@ namespace ArrowGame
                 remaining.Remove(chosen.SourceIndex);
                 occupiedCount += candidate.OccupiedCells.Count;
 
+                MarkCandidateOccupied(candidate, blockerOccupied);
                 if (occupied != null)
                     MarkCandidateOccupied(candidate, occupied);
 
@@ -1610,7 +1640,7 @@ namespace ArrowGame
                     break;
             }
 
-            return ValidatePuzzle(picked) ? picked : new List<PathCandidate>();
+            return picked;
         }
 
         private int CountOccupiedCells(List<PathCandidate> candidates)
@@ -1645,7 +1675,7 @@ namespace ArrowGame
         private List<CandidatePlacement> BuildPlacementOptions(
             List<PathCandidate> candidates,
             HashSet<int> remaining,
-            List<PathCandidate> placed,
+            bool[,] blockerOccupied,
             bool[,] occupied,
             bool[,] activeMask,
             int remainingCapacity)
@@ -1668,7 +1698,7 @@ namespace ArrowGame
                 if (candidate.OccupiedCells.Count > remainingCapacity)
                     continue;
 
-                AddPlacementOption(candidate, sourceIndex, placed, occupied, activeMask, options);
+                AddPlacementOption(candidate, sourceIndex, blockerOccupied, occupied, activeMask, options);
             }
 
             return options;
@@ -1677,7 +1707,7 @@ namespace ArrowGame
         private void AddPlacementOption(
             PathCandidate candidate,
             int sourceIndex,
-            List<PathCandidate> placed,
+            bool[,] blockerOccupied,
             bool[,] occupied,
             bool[,] activeMask,
             List<CandidatePlacement> options)
@@ -1688,11 +1718,11 @@ namespace ArrowGame
             if (occupied != null && !CanPlaceCandidateWithSpacing(candidate, occupied, activeMask))
                 return;
 
-            if (CanCandidateEscape(candidate, placed))
+            if (CanCandidateEscape(candidate, blockerOccupied, activeMask.GetLength(0), activeMask.GetLength(1)))
                 options.Add(new CandidatePlacement(sourceIndex, candidate, GetPlacementScore(candidate)));
 
             PathCandidate reversed = candidate.CreateReversed();
-            if (reversed != null && CanCandidateEscape(reversed, placed))
+            if (reversed != null && CanCandidateEscape(reversed, blockerOccupied, activeMask.GetLength(0), activeMask.GetLength(1)))
                 options.Add(new CandidatePlacement(sourceIndex, reversed, GetPlacementScore(reversed) - 0.05f));
         }
 
@@ -1922,6 +1952,7 @@ namespace ArrowGame
             public readonly List<Vector2Int> OccupiedCells;
             public readonly List<Vector2> WorldPoints;
             public readonly int Depth;
+            private readonly HashSet<Vector2Int> occupiedLookup;
 
             public PathCandidate(List<Vector2Int> cells, List<Vector2> worldPoints, int depth)
             {
@@ -1929,6 +1960,7 @@ namespace ArrowGame
                 OccupiedCells = ExpandOccupiedCells(cells);
                 Depth = depth;
                 WorldPoints = worldPoints;
+                occupiedLookup = new HashSet<Vector2Int>(OccupiedCells);
             }
 
             public PathCandidate CreateReversed()
@@ -1955,6 +1987,11 @@ namespace ArrowGame
                 return new Vector2Int(
                     Mathf.Clamp(head.x - neck.x, -1, 1),
                     Mathf.Clamp(head.y - neck.y, -1, 1));
+            }
+
+            public bool ContainsOccupiedCell(Vector2Int cell)
+            {
+                return occupiedLookup.Contains(cell);
             }
 
             private static List<Vector2Int> ExpandOccupiedCells(List<Vector2Int> cells)
