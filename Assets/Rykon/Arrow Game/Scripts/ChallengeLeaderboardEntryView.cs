@@ -43,7 +43,10 @@ namespace ArrowGame
             if (background != null)
                 background.color = GetBackgroundColor(entryData);
 
-            Color textColor = entryData.rank <= 3 || entryData.isPlayer ? highlightedTextColor : defaultTextColor;
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+            Color textColor = entryData.rank <= 3 || entryData.isPlayer
+                ? palette.LeaderboardHighlightedTextColor
+                : palette.LeaderboardDefaultTextColor;
             SetTextColor(rankText, textColor);
             SetTextColor(nameText, textColor);
             SetTextColor(timeText, textColor);
@@ -66,16 +69,18 @@ namespace ArrowGame
 
         private Color GetBackgroundColor(ChallengeLeaderboardEntryData entryData)
         {
-            if (entryData.isPlayer)
-                return playerBackgroundColor;
-            if (entryData.rank == 1)
-                return firstPlaceBackgroundColor;
-            if (entryData.rank == 2)
-                return secondPlaceBackgroundColor;
-            if (entryData.rank == 3)
-                return thirdPlaceBackgroundColor;
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
 
-            return defaultBackgroundColor;
+            if (entryData.isPlayer)
+                return palette.LeaderboardPlayerBackgroundColor;
+            if (entryData.rank == 1)
+                return palette.LeaderboardFirstPlaceBackgroundColor;
+            if (entryData.rank == 2)
+                return palette.LeaderboardSecondPlaceBackgroundColor;
+            if (entryData.rank == 3)
+                return palette.LeaderboardThirdPlaceBackgroundColor;
+
+            return palette.LeaderboardDefaultBackgroundColor;
         }
 
         private static void SetTextColor(TextMeshProUGUI textComponent, Color color)

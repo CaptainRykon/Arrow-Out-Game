@@ -226,6 +226,8 @@ namespace ArrowGame
                 leaderboardPanel.SetActive(false);
             if (submitScoreButton != null)
                 submitScoreButton.interactable = false;
+
+            ThemeManager.ApplyThemeToScene(gameObject.scene);
         }
 
         private void SetLoadingState(bool visible, float progress, string statusText)
@@ -242,6 +244,8 @@ namespace ArrowGame
 
         private void RefreshLeaderboardUi()
         {
+            ThemeManager.ApplyThemeToScene(gameObject.scene);
+
             DateTime nowUtc = DateTime.UtcNow;
             int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
             List<ChallengeLeaderboardEntryData> entries = GameDataStore.BuildLocalChallengeLeaderboard(nowUtc, Mathf.Max(leaderboardViewCount, 6));

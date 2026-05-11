@@ -104,6 +104,13 @@ namespace ArrowGame
             HasGeneratedBoard = false;
         }
 
+        public void ApplyThemePalette(ThemeManager.ThemePalette palette)
+        {
+            dotColor = palette.DotColor;
+            guideLineColor = palette.GuideLineColor;
+            dotWinHighlightColor = palette.DotWinHighlightColor;
+        }
+
         public void GenerateBoard()
         {
             ArrowGameManager manager = ArrowGameManager.Instance ?? FindFirstObjectByType<ArrowGameManager>();
@@ -890,7 +897,7 @@ namespace ArrowGame
             if (spriteRenderer.sprite == null)
                 spriteRenderer.sprite = runtimeArrowSprite;
 
-            spriteRenderer.color = Color.black;
+            spriteRenderer.color = ThemeManager.CurrentPalette.ArrowColor;
             spriteRenderer.sortingOrder = arrowSortingOrder;
             return arrowObject.transform;
         }
@@ -1609,6 +1616,7 @@ namespace ArrowGame
             int localHeight = activeMask.GetLength(1);
             bool[,] occupied = enforceSpacing ? new bool[activeMask.GetLength(0), activeMask.GetLength(1)] : null;
             bool[,] blockerOccupied = new bool[localWidth, localHeight];
+            bool[,] headReserved = new bool[localWidth, localHeight];
             List<PathCandidate> picked = new();
             int occupiedCount = 0;
 
@@ -1618,6 +1626,7 @@ namespace ArrowGame
                     candidates,
                     remaining,
                     blockerOccupied,
+                    headReserved,
                     occupied,
                     activeMask,
                     maximumOccupiedCells - occupiedCount);
@@ -1633,6 +1642,7 @@ namespace ArrowGame
                 occupiedCount += candidate.OccupiedCells.Count;
 
                 MarkCandidateOccupied(candidate, blockerOccupied);
+                MarkHeadReserved(candidate, headReserved);
                 if (occupied != null)
                     MarkCandidateOccupied(candidate, occupied);
 
@@ -1676,6 +1686,7 @@ namespace ArrowGame
             List<PathCandidate> candidates,
             HashSet<int> remaining,
             bool[,] blockerOccupied,
+            bool[,] headReserved,
             bool[,] occupied,
             bool[,] activeMask,
             int remainingCapacity)
@@ -1698,7 +1709,7 @@ namespace ArrowGame
                 if (candidate.OccupiedCells.Count > remainingCapacity)
                     continue;
 
-                AddPlacementOption(candidate, sourceIndex, blockerOccupied, occupied, activeMask, options);
+                AddPlacementOption(candidate, sourceIndex, blockerOccupied, headReserved, occupied, activeMask, options);
             }
 
             return options;
@@ -1708,6 +1719,7 @@ namespace ArrowGame
             PathCandidate candidate,
             int sourceIndex,
             bool[,] blockerOccupied,
+            bool[,] headReserved,
             bool[,] occupied,
             bool[,] activeMask,
             List<CandidatePlacement> options)
@@ -1718,12 +1730,46 @@ namespace ArrowGame
             if (occupied != null && !CanPlaceCandidateWithSpacing(candidate, occupied, activeMask))
                 return;
 
+            if (ViolatesHeadClearance(candidate, blockerOccupied, headReserved, activeMask.GetLength(0), activeMask.GetLength(1)))
+                return;
+
             if (CanCandidateEscape(candidate, blockerOccupied, activeMask.GetLength(0), activeMask.GetLength(1)))
                 options.Add(new CandidatePlacement(sourceIndex, candidate, GetPlacementScore(candidate)));
 
             PathCandidate reversed = candidate.CreateReversed();
-            if (reversed != null && CanCandidateEscape(reversed, blockerOccupied, activeMask.GetLength(0), activeMask.GetLength(1)))
+            if (reversed != null &&
+                !ViolatesHeadClearance(reversed, blockerOccupied, headReserved, activeMask.GetLength(0), activeMask.GetLength(1)) &&
+                CanCandidateEscape(reversed, blockerOccupied, activeMask.GetLength(0), activeMask.GetLength(1)))
                 options.Add(new CandidatePlacement(sourceIndex, reversed, GetPlacementScore(reversed) - 0.05f));
+        }
+
+        private bool ViolatesHeadClearance(PathCandidate candidate, bool[,] blockerOccupied, bool[,] headReserved, int localWidth, int localHeight)
+        {
+            if (candidate == null)
+                return true;
+
+            for (int i = 0; i < candidate.HeadClearanceCells.Count; i++)
+            {
+                Vector2Int cell = candidate.HeadClearanceCells[i];
+                if (!IsInside(cell, localWidth, localHeight))
+                    continue;
+
+                if ((blockerOccupied != null && blockerOccupied[cell.x, cell.y]) ||
+                    (headReserved != null && headReserved[cell.x, cell.y]))
+                    return true;
+            }
+
+            if (headReserved == null)
+                return false;
+
+            for (int i = 0; i < candidate.OccupiedCells.Count; i++)
+            {
+                Vector2Int cell = candidate.OccupiedCells[i];
+                if (IsInside(cell, localWidth, localHeight) && headReserved[cell.x, cell.y])
+                    return true;
+            }
+
+            return false;
         }
 
         private float GetPlacementScore(PathCandidate candidate)
@@ -1806,6 +1852,19 @@ namespace ArrowGame
                 Vector2Int cell = candidate.OccupiedCells[i];
                 if (IsInside(cell, occupied.GetLength(0), occupied.GetLength(1)))
                     occupied[cell.x, cell.y] = true;
+            }
+        }
+
+        private void MarkHeadReserved(PathCandidate candidate, bool[,] reserved)
+        {
+            if (candidate == null || reserved == null)
+                return;
+
+            for (int i = 0; i < candidate.HeadClearanceCells.Count; i++)
+            {
+                Vector2Int cell = candidate.HeadClearanceCells[i];
+                if (IsInside(cell, reserved.GetLength(0), reserved.GetLength(1)))
+                    reserved[cell.x, cell.y] = true;
             }
         }
 
@@ -1950,6 +2009,7 @@ namespace ArrowGame
         {
             public readonly List<Vector2Int> Cells;
             public readonly List<Vector2Int> OccupiedCells;
+            public readonly List<Vector2Int> HeadClearanceCells;
             public readonly List<Vector2> WorldPoints;
             public readonly int Depth;
             private readonly HashSet<Vector2Int> occupiedLookup;
@@ -1958,6 +2018,7 @@ namespace ArrowGame
             {
                 Cells = cells;
                 OccupiedCells = ExpandOccupiedCells(cells);
+                HeadClearanceCells = BuildHeadClearanceCells(cells);
                 Depth = depth;
                 WorldPoints = worldPoints;
                 occupiedLookup = new HashSet<Vector2Int>(OccupiedCells);
@@ -1992,6 +2053,39 @@ namespace ArrowGame
             public bool ContainsOccupiedCell(Vector2Int cell)
             {
                 return occupiedLookup.Contains(cell);
+            }
+
+            private static List<Vector2Int> BuildHeadClearanceCells(List<Vector2Int> cells)
+            {
+                List<Vector2Int> reserved = new();
+                if (cells == null || cells.Count < 2)
+                    return reserved;
+
+                Vector2Int head = cells[0];
+                Vector2Int neck = cells[1];
+                Vector2Int outward = new(
+                    Mathf.Clamp(head.x - neck.x, -1, 1),
+                    Mathf.Clamp(head.y - neck.y, -1, 1));
+
+                if (outward == Vector2Int.zero)
+                    return reserved;
+
+                Vector2Int perpendicularA = new(-outward.y, outward.x);
+                Vector2Int perpendicularB = new(outward.y, -outward.x);
+
+                AddUnique(reserved, head + outward);
+                AddUnique(reserved, head + perpendicularA);
+                AddUnique(reserved, head + perpendicularB);
+                AddUnique(reserved, head + outward + perpendicularA);
+                AddUnique(reserved, head + outward + perpendicularB);
+
+                return reserved;
+            }
+
+            private static void AddUnique(List<Vector2Int> cells, Vector2Int value)
+            {
+                if (!cells.Contains(value))
+                    cells.Add(value);
             }
 
             private static List<Vector2Int> ExpandOccupiedCells(List<Vector2Int> cells)

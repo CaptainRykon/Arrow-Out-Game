@@ -36,10 +36,18 @@ namespace ArrowGame
         private float cachedLineWidth = 0.2f;
         private Color currentVisualColor = Color.black;
         private float arrowHeadJoinOverlap = 0.08f;
+        private Color themeBaseColor = Color.black;
+        private Color themeHintColor = Color.yellow;
+        private Color themeBlockedColor = Color.red;
 
         public void Init()
         {
-            Color = Color.black;
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+            themeBaseColor = palette.ArrowColor;
+            themeHintColor = palette.ArrowHintColor;
+            themeBlockedColor = palette.ArrowBlockedColor;
+
+            Color = themeBaseColor;
             moveSpeed = 30f;
 
             lineRenderer = GetComponent<LineRenderer>();
@@ -49,7 +57,7 @@ namespace ArrowGame
             lineRenderer.enabled = false;
             if (arrow != null)
                 baseArrowScale = Mathf.Max(arrow.localScale.x, 0.0001f);
-            SetVisualColor(Color);
+            SetVisualColor(themeBaseColor);
             UpdateArrowScale();
 
             edgeCollider2D = gameObject.AddComponent<EdgeCollider2D>();
@@ -216,7 +224,7 @@ namespace ArrowGame
         private IEnumerator OnBlockedHit(RaycastHit2D blockingHit)
         {
             isBlockedAnimating = true;
-            SetBlockedHighlight(Color.red);
+            SetBlockedHighlight(themeBlockedColor);
 
             Vector2 originalHead = points[0];
             Vector2 direction = GetHeadDirection();
@@ -232,7 +240,7 @@ namespace ArrowGame
             SetArrowLocalPosition(originalHead);
             UpdateLineRender();
 
-            SetVisualColor(Color);
+            SetVisualColor(themeBaseColor);
 
             ArrowGameManager.Instance.OnCollide();
             isBlockedAnimating = false;
@@ -240,9 +248,9 @@ namespace ArrowGame
 
         private IEnumerator ShowHintCO()
         {
-            SetVisualColor(Color.yellow);
+            SetVisualColor(themeHintColor);
             yield return new WaitForSeconds(1.5f);
-            SetVisualColor(Color);
+            SetVisualColor(themeBaseColor);
         }
 
         private float CheckDistanceToLine(Vector2 point)

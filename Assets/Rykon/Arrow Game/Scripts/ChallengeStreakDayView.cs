@@ -43,14 +43,16 @@ namespace ArrowGame
 
         private Color ResolveBackgroundColor(bool isPlayed, bool isCurrentDay, bool isMissed)
         {
-            if (isPlayed)
-                return playedColor;
-            if (isCurrentDay)
-                return currentColor;
-            if (isMissed)
-                return missedColor;
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
 
-            return pendingColor;
+            if (isPlayed)
+                return palette.ChallengePlayedColor;
+            if (isCurrentDay)
+                return palette.ChallengeCurrentColor;
+            if (isMissed)
+                return palette.ChallengeMissedColor;
+
+            return palette.ChallengePendingColor;
         }
     }
 }

@@ -293,11 +293,13 @@ namespace ArrowGame
 
         private void SetTabVisual(Image background, TextMeshProUGUI label, bool isSelected)
         {
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+
             if (background != null)
-                background.color = isSelected ? selectedTabColor : unselectedTabColor;
+                background.color = isSelected ? palette.SelectedTabColor : palette.UnselectedTabColor;
 
             if (label != null)
-                label.color = isSelected ? selectedLabelColor : unselectedLabelColor;
+                label.color = isSelected ? palette.SelectedTabLabelColor : palette.UnselectedTabLabelColor;
         }
 
         private void ToggleVibration()
@@ -320,7 +322,7 @@ namespace ArrowGame
 
         private void ToggleDarkMode()
         {
-            GameDataStore.IsDarkModeEnabled = !GameDataStore.IsDarkModeEnabled;
+            ThemeManager.SetDarkModeEnabled(!ThemeManager.IsDarkModeEnabled);
             RefreshSettingsUi();
         }
 
@@ -353,12 +355,12 @@ namespace ArrowGame
 
             bool isVibrationEnabled = GameDataStore.IsVibrationEnabled;
             bool isSoundEnabled = GameDataStore.IsSoundEnabled;
-            bool isDarkModeEnabled = GameDataStore.IsDarkModeEnabled;
+            bool isDarkModeEnabled = ThemeManager.IsDarkModeEnabled;
 
+            ApplyDarkModeState(isDarkModeEnabled);
             UpdateToggleVisual(vibrationToggleBackground, vibrationToggleKnob, isVibrationEnabled);
             UpdateToggleVisual(soundToggleBackground, soundToggleKnob, isSoundEnabled);
             UpdateToggleVisual(darkModeToggleBackground, darkModeToggleKnob, isDarkModeEnabled);
-            ApplyDarkModeState(isDarkModeEnabled);
 
             SetLinkState(privacyButton, privacyUrl);
             SetLinkState(termsButton, termsUrl);
@@ -369,8 +371,10 @@ namespace ArrowGame
 
         private void UpdateToggleVisual(Image background, RectTransform knob, bool isEnabled)
         {
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+
             if (background != null)
-                background.color = isEnabled ? toggleEnabledColor : toggleDisabledColor;
+                background.color = isEnabled ? palette.ToggleEnabledColor : palette.ToggleDisabledColor;
 
             if (knob != null)
                 knob.anchoredPosition = isEnabled ? toggleKnobOnPosition : toggleKnobOffPosition;
@@ -378,10 +382,7 @@ namespace ArrowGame
 
         private void ApplyDarkModeState(bool isDarkModeEnabled)
         {
-            ApplyImageColors(themeSurfaceImages, isDarkModeEnabled ? darkSurfaceColor : lightSurfaceColor);
-            ApplyImageColors(themeAccentImages, isDarkModeEnabled ? darkAccentColor : lightAccentColor);
-            ApplyTextColors(themePrimaryTexts, isDarkModeEnabled ? darkPrimaryTextColor : lightPrimaryTextColor);
-            ApplyTextColors(themeSecondaryTexts, isDarkModeEnabled ? darkSecondaryTextColor : lightSecondaryTextColor);
+            ThemeManager.ApplyThemeToScene(gameObject.scene);
         }
 
         private static void ApplyImageColors(Image[] images, Color color)

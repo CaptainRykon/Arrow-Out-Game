@@ -146,6 +146,7 @@ namespace ArrowGame
 
             InitializeGuideToggleButton();
             InitializeGameplayButtons();
+            ApplyTheme();
 
             Random.InitState(0);
             for (int i = 0; i < 1000; i++)
@@ -164,9 +165,13 @@ namespace ArrowGame
             InitializeQuitConfirmationPanel();
             RefreshHintAmountText();
             RefreshProgress();
+            RefreshHeartVisuals();
             SetDamageOverlayVisible(0f);
             SetWinMessageAlpha(0f);
             ConfigureModeSpecificUi();
+            ThemeManager.ApplyThemeToScene(gameObject.scene);
+            RefreshHeartVisuals();
+            RefreshGuideButtonState();
 
             hasChallengeSceneController = FindFirstObjectByType<ChallengeSceneController>() != null;
 
@@ -223,7 +228,7 @@ namespace ArrowGame
             if (heart < 0)
                 heart = 0;
 
-            hearts[heart].color = Color.black;
+            RefreshHeartVisuals();
             PlayDamageFlash();
             if (heart <= 0)
                 GameOver();
@@ -414,7 +419,35 @@ namespace ArrowGame
             if (guideToggleButtonImage == null)
                 return;
 
-            guideToggleButtonImage.color = guideLinesVisible ? guideButtonOnColor : guideButtonOffColor;
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+            guideToggleButtonImage.color = guideLinesVisible ? palette.GuideButtonOnColor : palette.GuideButtonOffColor;
+        }
+
+        private void ApplyTheme()
+        {
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+
+            if (LineGenerator != null)
+                LineGenerator.ApplyThemePalette(palette);
+
+            ThemeManager.ApplyThemeToScene(gameObject.scene);
+            RefreshGuideButtonState();
+            RefreshHeartVisuals();
+        }
+
+        private void RefreshHeartVisuals()
+        {
+            if (hearts == null)
+                return;
+
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+            for (int i = 0; i < hearts.Length; i++)
+            {
+                if (hearts[i] == null)
+                    continue;
+
+                hearts[i].color = i < heart ? palette.HeartFilledColor : palette.HeartEmptyColor;
+            }
         }
 
         private void ConfigureBoardForLevel(int level)
