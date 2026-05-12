@@ -177,15 +177,15 @@ namespace ArrowGame
         private static readonly ThemePalette DarkPalette = new(
             true,
             new Color(0.06f, 0.08f, 0.11f, 1f),
-            new Color(0.12f, 0.15f, 0.2f, 1f),
-            new Color(0.18f, 0.22f, 0.29f, 1f),
+            new Color(0.15f, 0.19f, 0.25f, 1f),
+            new Color(0.2f, 0.25f, 0.33f, 1f),
             new Color(0.49f, 0.66f, 1f, 1f),
             new Color(0.97f, 0.78f, 0.28f, 1f),
             new Color(0.94f, 0.97f, 1f, 1f),
             new Color(0.74f, 0.81f, 0.9f, 1f),
-            new Color(0.4f, 0.46f, 0.56f, 1f),
+            new Color(0.5f, 0.57f, 0.67f, 1f),
             new Color(0.49f, 0.66f, 1f, 1f),
-            new Color(0.27f, 0.31f, 0.39f, 1f),
+            new Color(0.32f, 0.38f, 0.48f, 1f),
             new Color(0.94f, 0.97f, 1f, 1f),
             new Color(1f, 0.86f, 0.3f, 1f),
             new Color(1f, 0.45f, 0.45f, 1f),
@@ -238,6 +238,46 @@ namespace ArrowGame
             for (int i = 0; i < roots.Length; i++)
             {
                 ApplyThemeToRoot(roots[i], palette);
+            }
+        }
+
+        public static void ApplyButtonTheme(
+            Button button,
+            Color backgroundColor,
+            Color foregroundColor,
+            Color disabledBackgroundColor,
+            Color disabledForegroundColor,
+            bool tintChildImages = false)
+        {
+            if (button == null)
+                return;
+
+            if (button.targetGraphic is Image backgroundImage)
+                backgroundImage.color = button.interactable ? backgroundColor : disabledBackgroundColor;
+
+            ColorBlock colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1f, 1f, 1f, 0.96f);
+            colors.pressedColor = new Color(0.9f, 0.9f, 0.9f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = Color.white;
+            button.colors = colors;
+
+            Graphic[] graphics = button.GetComponentsInChildren<Graphic>(true);
+            for (int i = 0; i < graphics.Length; i++)
+            {
+                Graphic graphic = graphics[i];
+                if (graphic == null || graphic == button.targetGraphic || graphic is TMP_SubMeshUI)
+                    continue;
+
+                if (graphic is TextMeshProUGUI text)
+                {
+                    text.color = button.interactable ? foregroundColor : disabledForegroundColor;
+                    continue;
+                }
+
+                if (tintChildImages && graphic is Image image)
+                    image.color = button.interactable ? foregroundColor : disabledForegroundColor;
             }
         }
 
@@ -376,14 +416,20 @@ namespace ArrowGame
         private static VisualRole DetectGraphicRole(Graphic graphic, Color baseColor)
         {
             string searchText = GetSearchText(graphic);
+            if (ContainsAny(searchText, "knob", "icon"))
+                return VisualRole.TextPrimary;
+
             if (ContainsAny(searchText, "background", "panel", "card", "surface", "container", "viewport", "overlay", "track"))
                 return baseColor.a < 0.85f ? VisualRole.SurfaceSoft : VisualRole.Surface;
 
-            if (ContainsAny(searchText, "fill", "progress", "button", "toggle", "accent", "badge", "marker", "play", "flame"))
+            if (ContainsAny(searchText, "play button", "play challenge button", "streak button", "hint button", "submit score button"))
                 return VisualRole.Accent;
 
-            if (ContainsAny(searchText, "knob", "icon"))
-                return VisualRole.TextPrimary;
+            if (ContainsAny(searchText, "home button", "retry button", "close button", "line trace button", "leaderboard main menu button", "toggle button"))
+                return VisualRole.SurfaceSoft;
+
+            if (ContainsAny(searchText, "fill", "progress", "button", "toggle", "accent", "badge", "marker", "play", "flame"))
+                return VisualRole.Accent;
 
             if (ContainsAny(searchText, "shadow", "outline", "disabled"))
                 return VisualRole.Disabled;

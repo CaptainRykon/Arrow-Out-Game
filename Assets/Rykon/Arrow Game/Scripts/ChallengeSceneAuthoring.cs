@@ -76,17 +76,11 @@ namespace ArrowGame
             barTrackLayout.preferredHeight = 34f;
             barTrackLayout.flexibleWidth = 1f;
 
-            Image barTrackImage = barTrack.GetComponent<Image>() ?? barTrack.gameObject.AddComponent<Image>();
-            barTrackImage.sprite = GetRuntimeSprite();
-            barTrackImage.color = new Color(0.14f, 0.16f, 0.28f, 0.94f);
-            barTrackImage.type = Image.Type.Sliced;
+            Image barTrackImage = EnsureImage(barTrack.gameObject, new Color(0.14f, 0.16f, 0.28f, 0.94f), Image.Type.Sliced);
 
             RectTransform fillRect = FindOrCreateRect(barTrack, "Loading Bar Fill");
             StretchRect(fillRect);
-            Image fillImage = fillRect.GetComponent<Image>() ?? fillRect.gameObject.AddComponent<Image>();
-            fillImage.sprite = GetRuntimeSprite();
-            fillImage.color = accentColor;
-            fillImage.type = Image.Type.Filled;
+            Image fillImage = EnsureImage(fillRect.gameObject, accentColor, Image.Type.Filled);
             fillImage.fillMethod = Image.FillMethod.Horizontal;
             fillImage.fillOrigin = (int)Image.OriginHorizontal.Left;
             fillImage.fillAmount = 0f;
@@ -161,7 +155,9 @@ namespace ArrowGame
             if (view == null)
                 view = root.gameObject.AddComponent<ChallengeLeaderboardEntryView>();
 
+#if UNITY_EDITOR
             AssignLeaderboardEntryView(view, root.gameObject, root.GetComponent<Image>(), rankText, nameText, timeText, firstBadge, secondBadge, thirdBadge);
+#endif
             return view;
         }
 
@@ -255,11 +251,7 @@ namespace ArrowGame
                 rect = CreateRect(name, parent);
 
             StretchRect(rect);
-            Image image = rect.GetComponent<Image>();
-            if (image == null)
-                image = rect.gameObject.AddComponent<Image>();
-            image.sprite = GetRuntimeSprite();
-            image.color = overlayColor;
+            Image image = EnsureImage(rect.gameObject, overlayColor);
             rect.gameObject.SetActive(active);
             return rect;
         }
@@ -276,12 +268,7 @@ namespace ArrowGame
             rect.sizeDelta = size;
             rect.anchoredPosition = Vector2.zero;
 
-            Image image = rect.GetComponent<Image>();
-            if (image == null)
-                image = rect.gameObject.AddComponent<Image>();
-            image.sprite = GetRuntimeSprite();
-            image.color = color;
-            image.type = Image.Type.Sliced;
+            Image image = EnsureImage(rect.gameObject, color, Image.Type.Sliced);
             return rect;
         }
 
@@ -304,10 +291,7 @@ namespace ArrowGame
             layout.preferredHeight = size.y;
 
             rect.sizeDelta = size;
-            Image image = rect.GetComponent<Image>() ?? rect.gameObject.AddComponent<Image>();
-            image.sprite = GetRuntimeSprite();
-            image.color = accentColor;
-            image.type = Image.Type.Sliced;
+            Image image = EnsureImage(rect.gameObject, accentColor, Image.Type.Sliced);
 
             Button button = rect.GetComponent<Button>() ?? rect.gameObject.AddComponent<Button>();
             button.targetGraphic = image;
@@ -398,6 +382,22 @@ namespace ArrowGame
             rectTransform.anchorMax = Vector2.one;
             rectTransform.offsetMin = Vector2.zero;
             rectTransform.offsetMax = Vector2.zero;
+        }
+
+        private static Image EnsureImage(GameObject gameObject, Color defaultColor, Image.Type defaultType = Image.Type.Simple)
+        {
+            Image image = gameObject.GetComponent<Image>();
+            if (image == null)
+            {
+                image = gameObject.AddComponent<Image>();
+                image.color = defaultColor;
+                image.type = defaultType;
+            }
+
+            if (image.sprite == null)
+                image.sprite = GetRuntimeSprite();
+
+            return image;
         }
 
         private static Sprite GetRuntimeSprite()

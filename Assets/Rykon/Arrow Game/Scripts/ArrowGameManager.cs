@@ -14,11 +14,20 @@ namespace ArrowGame
         public enum GameplayMode
         {
             Levels = 0,
-            Challenge = 1
+            Challenge = 1,
+            Tutorial = 2
         }
 
         public static ArrowGameManager Instance;
         private const string MenuSceneName = "MenuScene";
+        private const string TutorialSceneName = "TutorialScene";
+        private static readonly Vector2Int[] TutorialBoardSizes =
+        {
+            new(8, 8),
+            new(10, 12),
+            new(12, 16)
+        };
+        private static readonly int[] TutorialSeeds = { 137, 821, 4099 };
 
         [Header("Gameplay UI")]
         public GameObject winUI;
@@ -47,6 +56,8 @@ namespace ArrowGame
         [SerializeField] private float winMessageFadeDuration = 0.35f;
         [SerializeField] private float quitPanelSlideDuration = 0.3f;
         [SerializeField] private float quitPanelHiddenOffsetY = -320f;
+        [SerializeField] private Vector2 quitPanelSize = new(620f, 320f);
+        [SerializeField] private Vector2 quitPanelButtonSize = new(220f, 76f);
 
         [Header("Board")]
         public LineGenerator LineGenerator;
@@ -67,6 +78,10 @@ namespace ArrowGame
         [SerializeField] private float pinchZoomSpeed = 0.02f;
         [SerializeField] private float minZoomRatio = 0.7f;
         [SerializeField] private float maxZoomRatio = 1.35f;
+        [SerializeField] private int maxZoomVisibleGridRows = 20;
+        [SerializeField] private int maxZoomVisibleGridColumns = 15;
+        [SerializeField] private float zoomInCellPadding = 1.5f;
+        [SerializeField] private float absoluteMinimumZoomSize = 2.5f;
         [SerializeField] private float editorScrollZoomSpeed = 0.75f;
         [SerializeField] private float dragThresholdPixels = 12f;
         [SerializeField] private float winCameraResetDuration = 0.45f;
@@ -75,6 +90,11 @@ namespace ArrowGame
         [SerializeField] private float winPanelDelay = 0.2f;
         [SerializeField] private float levelIntroDelay = 0.12f;
         [SerializeField] private float levelIntroDuration = 0.85f;
+        [SerializeField] private Vector2 challengeLoseRetryButtonPosition = new(-120f, -250f);
+        [SerializeField] private Vector2 challengeLoseMainMenuButtonPosition = new(120f, -250f);
+        [SerializeField] private Vector2 challengeLoseButtonSize = new(260f, 84f);
+        [SerializeField] private float tutorialAdvanceDelay = 0.4f;
+        [SerializeField] private float tutorialHeaderFontSize = 28f;
 
         [Header("Guide Toggle")]
         [SerializeField] private Button guideToggleButton;
@@ -117,6 +137,7 @@ namespace ArrowGame
         private bool externalInputLocked;
         private bool hasStartedGameplayIntro;
         private bool hasChallengeSceneController;
+        private int currentTutorialStep;
 
         public event UnityAction ChallengeCompleted;
         public event UnityAction ChallengeFailed;
@@ -126,10 +147,20 @@ namespace ArrowGame
         public bool IsInputLocked => externalInputLocked || isTransitioningToWin || isLevelIntroPlaying || isQuitPanelVisible || loseUI.activeSelf || winUI.activeSelf;
         public GameplayMode CurrentGameplayMode => gameplayMode;
         public bool IsChallengeMode => gameplayMode == GameplayMode.Challenge;
+        public bool IsTutorialMode => gameplayMode == GameplayMode.Tutorial || gameObject.scene.name == TutorialSceneName;
 
         private void Awake()
         {
             Instance = this;
+            EnsureQuitConfirmationUi();
+        }
+
+        private void OnValidate()
+        {
+            if (Application.isPlaying)
+                return;
+
+            EnsureQuitConfirmationUi();
         }
 
         public void ResetBoardStateForGeneration()
@@ -144,6 +175,7 @@ namespace ArrowGame
             int l = Mathf.Max(GameDataStore.Level, 1);
             Application.targetFrameRate = 60;
 
+            EnsureQuitConfirmationUi();
             InitializeGuideToggleButton();
             InitializeGameplayButtons();
             ApplyTheme();
@@ -169,7 +201,7 @@ namespace ArrowGame
             SetDamageOverlayVisible(0f);
             SetWinMessageAlpha(0f);
             ConfigureModeSpecificUi();
-            ThemeManager.ApplyThemeToScene(gameObject.scene);
+            ApplyTheme();
             RefreshHeartVisuals();
             RefreshGuideButtonState();
 
@@ -222,6 +254,9 @@ namespace ArrowGame
 
         public void OnCollide()
         {
+            if (IsTutorialMode)
+                return;
+
             HapticManager.PlayFailure();
             SoundManager.PlayArrowEscapeFail();
             heart--;
@@ -264,6 +299,13 @@ namespace ArrowGame
 
         public void Retry()
         {
+            if (IsChallengeMode && loseUI != null && loseUI.activeSelf)
+            {
+                ChallengeSceneController challengeSceneController = FindFirstObjectByType<ChallengeSceneController>();
+                if (challengeSceneController != null && challengeSceneController.TryUseChallengeRetry())
+                    return;
+            }
+
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
 
@@ -283,8 +325,36 @@ namespace ArrowGame
             RefreshProgress();
         }
 
+        public void ConfigureChallengeRetryUi(bool retryAvailable)
+        {
+            if (!IsChallengeMode)
+                return;
+
+            ConfigureChallengeLoseButtons();
+
+            if (restartButton != null)
+            {
+                restartButton.gameObject.SetActive(true);
+                restartButton.interactable = retryAvailable;
+            }
+
+            if (mainMenuButton != null)
+            {
+                mainMenuButton.gameObject.SetActive(true);
+                mainMenuButton.interactable = true;
+            }
+
+            ApplyGameplayThemeOverrides();
+        }
+
         public void OpenQuitConfirmation()
         {
+            if ((loseUI != null && loseUI.activeSelf) || (winUI != null && winUI.activeSelf))
+            {
+                ConfirmQuitToMenu();
+                return;
+            }
+
             if (quitConfirmationPanelRect == null)
                 return;
 
@@ -312,7 +382,41 @@ namespace ArrowGame
             loseUI.SetActive(true);
 
             if (IsChallengeMode)
+            {
+                ConfigureChallengeLoseButtons();
                 ChallengeFailed?.Invoke();
+            }
+        }
+
+        private void ConfigureChallengeLoseButtons()
+        {
+            if (!IsChallengeMode)
+                return;
+
+            ConfigureChallengeLoseButton(restartButton, challengeLoseRetryButtonPosition, "Retry");
+            ConfigureChallengeLoseButton(mainMenuButton, challengeLoseMainMenuButtonPosition, "Main Menu");
+        }
+
+        private void ConfigureChallengeLoseButton(Button button, Vector2 anchoredPosition, string labelText)
+        {
+            if (button == null)
+                return;
+
+            button.gameObject.SetActive(true);
+            button.transform.SetAsLastSibling();
+
+            if (button.transform is RectTransform rectTransform)
+            {
+                rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+                rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                rectTransform.anchoredPosition = anchoredPosition;
+                rectTransform.sizeDelta = challengeLoseButtonSize;
+            }
+
+            TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null && !string.IsNullOrWhiteSpace(labelText))
+                label.text = labelText;
         }
 
         private void GameWin(LineController lastRemovedLine)
@@ -345,6 +449,12 @@ namespace ArrowGame
             yield return AnimateCameraToFittedView();
             yield return LineGenerator.PlayDotClearAnimation();
             yield return new WaitForSeconds(winPanelDelay);
+
+            if (IsTutorialMode)
+            {
+                yield return HandleTutorialBoardCompleted();
+                yield break;
+            }
 
             if (!IsChallengeMode)
                 GameDataStore.Level++;
@@ -404,6 +514,8 @@ namespace ArrowGame
 
         private void InitializeQuitConfirmationPanel()
         {
+            EnsureQuitConfirmationUi();
+
             if (quitConfirmationPanelRect == null)
                 return;
 
@@ -414,13 +526,177 @@ namespace ArrowGame
             isQuitPanelVisible = false;
         }
 
+        private void EnsureQuitConfirmationUi()
+        {
+            if (quitConfirmationPanelRect != null && quitConfirmYesButton != null && quitConfirmNoButton != null)
+                return;
+
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            if (canvas == null)
+                return;
+
+            RectTransform panel = quitConfirmationPanelRect != null
+                ? quitConfirmationPanelRect
+                : FindChildRect(canvas.transform, "Quit Confirmation Panel");
+
+            if (panel == null)
+                panel = CreateQuitConfirmationPanel(canvas.transform);
+
+            quitConfirmationPanelRect = panel;
+            quitConfirmYesButton = FindButtonByName(panel, "Quit Confirm Yes Button");
+            quitConfirmNoButton = FindButtonByName(panel, "Quit Confirm No Button");
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                UnityEditor.SerializedObject serializedObject = new(this);
+                AssignEditorReference(serializedObject, "quitConfirmationPanelRect", quitConfirmationPanelRect);
+                AssignEditorReference(serializedObject, "quitConfirmYesButton", quitConfirmYesButton);
+                AssignEditorReference(serializedObject, "quitConfirmNoButton", quitConfirmNoButton);
+                serializedObject.ApplyModifiedPropertiesWithoutUndo();
+
+                UnityEditor.EditorUtility.SetDirty(this);
+                if (gameObject.scene.IsValid())
+                    UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(gameObject.scene);
+            }
+#endif
+        }
+
+        private RectTransform CreateQuitConfirmationPanel(Transform parent)
+        {
+            RectTransform panel = CreateUiRect("Quit Confirmation Panel", parent);
+            panel.anchorMin = new Vector2(0.5f, 0.5f);
+            panel.anchorMax = new Vector2(0.5f, 0.5f);
+            panel.pivot = new Vector2(0.5f, 0.5f);
+            panel.sizeDelta = quitPanelSize;
+            panel.anchoredPosition = Vector2.zero;
+
+            Image panelImage = panel.GetComponent<Image>() ?? panel.gameObject.AddComponent<Image>();
+            if (panelImage.sprite == null)
+                panelImage.sprite = GetDefaultUiSprite();
+            panelImage.type = Image.Type.Sliced;
+            panelImage.color = new Color(1f, 1f, 1f, 0.96f);
+
+            CreateUiLabel(panel, "Quit Title", "Quit Level?", 42f, new Vector2(0f, 88f), new Vector2(420f, 56f));
+            CreateUiLabel(panel, "Quit Message", "Are you sure you want to go back to the main menu?", 24f, new Vector2(0f, 24f), new Vector2(520f, 72f));
+
+            CreateUiButton(panel, "Quit Confirm Yes Button", "Yes", new Vector2(-120f, -92f), quitPanelButtonSize);
+            CreateUiButton(panel, "Quit Confirm No Button", "No", new Vector2(120f, -92f), quitPanelButtonSize);
+            panel.gameObject.SetActive(false);
+            return panel;
+        }
+
+        private Button CreateUiButton(Transform parent, string name, string labelText, Vector2 anchoredPosition, Vector2 size)
+        {
+            RectTransform rect = FindChildRect(parent, name) ?? CreateUiRect(name, parent);
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+
+            Image image = rect.GetComponent<Image>() ?? rect.gameObject.AddComponent<Image>();
+            if (image.sprite == null)
+                image.sprite = GetDefaultUiSprite();
+            image.type = Image.Type.Sliced;
+            image.color = new Color(0.31f, 0.35f, 0.51f, 0.94f);
+
+            Button button = rect.GetComponent<Button>() ?? rect.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+
+            CreateUiLabel(rect, "Label", labelText, 30f, Vector2.zero, size - new Vector2(24f, 20f));
+            return button;
+        }
+
+        private TextMeshProUGUI CreateUiLabel(Transform parent, string name, string text, float fontSize, Vector2 anchoredPosition, Vector2 size)
+        {
+            RectTransform rect = FindChildRect(parent, name) ?? CreateUiRect(name, parent);
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+
+            TextMeshProUGUI label = rect.GetComponent<TextMeshProUGUI>() ?? rect.gameObject.AddComponent<TextMeshProUGUI>();
+            label.text = text;
+            label.fontSize = fontSize;
+            label.alignment = TextAlignmentOptions.Center;
+            label.color = new Color(0.12f, 0.16f, 0.25f, 1f);
+            label.raycastTarget = false;
+            label.textWrappingMode = TextWrappingModes.Normal;
+            if (TMP_Settings.defaultFontAsset != null)
+                label.font = TMP_Settings.defaultFontAsset;
+            return label;
+        }
+
+        private static RectTransform CreateUiRect(string name, Transform parent)
+        {
+            GameObject gameObject = new(name, typeof(RectTransform));
+            gameObject.transform.SetParent(parent, false);
+            return gameObject.GetComponent<RectTransform>();
+        }
+
+        private static RectTransform FindChildRect(Transform parent, string name)
+        {
+            if (parent == null)
+                return null;
+
+            Transform child = FindDeepChild(parent, name);
+            return child as RectTransform;
+        }
+
+        private static Button FindButtonByName(Transform parent, string name)
+        {
+            Transform child = FindDeepChild(parent, name);
+            return child != null ? child.GetComponent<Button>() : null;
+        }
+
+        private static Transform FindDeepChild(Transform parent, string childName)
+        {
+            if (parent == null)
+                return null;
+
+            foreach (Transform child in parent)
+            {
+                if (child.name == childName)
+                    return child;
+
+                Transform nested = FindDeepChild(child, childName);
+                if (nested != null)
+                    return nested;
+            }
+
+            return null;
+        }
+
+        private static Sprite GetDefaultUiSprite()
+        {
+            return Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+        }
+
+#if UNITY_EDITOR
+        private static void AssignEditorReference(UnityEditor.SerializedObject serializedObject, string propertyName, Object value)
+        {
+            UnityEditor.SerializedProperty property = serializedObject.FindProperty(propertyName);
+            if (property != null)
+                property.objectReferenceValue = value;
+        }
+#endif
+
         private void RefreshGuideButtonState()
         {
-            if (guideToggleButtonImage == null)
+            if (guideToggleButton == null)
                 return;
 
             ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
-            guideToggleButtonImage.color = guideLinesVisible ? palette.GuideButtonOnColor : palette.GuideButtonOffColor;
+            Color buttonColor = guideLinesVisible ? palette.GuideButtonOnColor : palette.GuideButtonOffColor;
+            ThemeManager.ApplyButtonTheme(guideToggleButton, buttonColor, palette.TextPrimaryColor, buttonColor, palette.TextPrimaryColor, true);
+            guideToggleButtonImage = guideToggleButton.targetGraphic as Image;
+        }
+
+        public void RefreshTheme()
+        {
+            ApplyTheme();
         }
 
         private void ApplyTheme()
@@ -431,8 +707,81 @@ namespace ArrowGame
                 LineGenerator.ApplyThemePalette(palette);
 
             ThemeManager.ApplyThemeToScene(gameObject.scene);
+            ApplyGameplayThemeOverrides();
             RefreshGuideButtonState();
             RefreshHeartVisuals();
+        }
+
+        private void ApplyGameplayThemeOverrides()
+        {
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+            if (!palette.IsDarkMode)
+            {
+                RefreshGuideButtonState();
+                RefreshHeartVisuals();
+                return;
+            }
+
+            Color iconButtonColor = palette.IsDarkMode
+                ? new Color(0.3f, 0.39f, 0.56f, 0.98f)
+                : new Color(0.84f, 0.86f, 0.9f, 1f);
+            Color hintButtonColor = palette.IsDarkMode
+                ? new Color(0.19f, 0.72f, 0.97f, 1f)
+                : new Color(0.12f, 0.74f, 0.97f, 1f);
+            Color neutralButtonColor = palette.IsDarkMode
+                ? new Color(0.24f, 0.31f, 0.45f, 0.98f)
+                : new Color(0.31f, 0.35f, 0.51f, 0.94f);
+            Color disabledButtonColor = palette.IsDarkMode
+                ? new Color(0.16f, 0.2f, 0.27f, 1f)
+                : new Color(0.72f, 0.76f, 0.83f, 1f);
+            Color panelColor = palette.IsDarkMode
+                ? new Color(0.12f, 0.16f, 0.22f, 0.96f)
+                : new Color(1f, 1f, 1f, 0.96f);
+
+            ThemeManager.ApplyButtonTheme(restartButton, iconButtonColor, Color.white, disabledButtonColor, palette.TextSecondaryColor, true);
+            ThemeManager.ApplyButtonTheme(mainMenuButton, iconButtonColor, Color.white, disabledButtonColor, palette.TextSecondaryColor, true);
+            ThemeManager.ApplyButtonTheme(quitConfirmYesButton, palette.AccentColor, Color.white, disabledButtonColor, palette.TextSecondaryColor);
+            ThemeManager.ApplyButtonTheme(quitConfirmNoButton, neutralButtonColor, Color.white, disabledButtonColor, palette.TextSecondaryColor);
+
+            if (hintButtonRect != null)
+            {
+                Button hintButton = hintButtonRect.GetComponent<Button>();
+                ThemeManager.ApplyButtonTheme(hintButton, hintButtonColor, Color.white, hintButtonColor, Color.white);
+            }
+
+            if (noHintsPanelRect != null && noHintsPanelRect.TryGetComponent(out Image noHintsImage))
+                noHintsImage.color = panelColor;
+
+            if (quitConfirmationPanelRect != null && quitConfirmationPanelRect.TryGetComponent(out Image quitPanelImage))
+                quitPanelImage.color = panelColor;
+
+            ApplyProgressTheme(palette);
+        }
+
+        private void ApplyProgressTheme(ThemeManager.ThemePalette palette)
+        {
+            if (progressSlider == null)
+                return;
+
+            Image fillImage = progressSlider.fillRect != null ? progressSlider.fillRect.GetComponent<Image>() : null;
+            Image[] sliderImages = progressSlider.GetComponentsInChildren<Image>(true);
+            for (int i = 0; i < sliderImages.Length; i++)
+            {
+                if (sliderImages[i] == null)
+                    continue;
+
+                if (sliderImages[i] == fillImage)
+                {
+                    sliderImages[i].color = palette.IsDarkMode
+                        ? new Color(0.38f, 0.56f, 1f, 1f)
+                        : Color.white;
+                    continue;
+                }
+
+                sliderImages[i].color = palette.IsDarkMode
+                    ? new Color(0.16f, 0.19f, 0.26f, 1f)
+                    : new Color(0.92f, 0.94f, 1f, 1f);
+            }
         }
 
         private void RefreshHeartVisuals()
@@ -480,6 +829,12 @@ namespace ArrowGame
 
         private void ConfigureSeedAndBoard(int level)
         {
+            if (IsTutorialMode)
+            {
+                ConfigureTutorialBoard();
+                return;
+            }
+
             if (IsChallengeMode)
             {
                 if (levelText != null)
@@ -513,8 +868,14 @@ namespace ArrowGame
 
         private void ConfigureModeSpecificUi()
         {
+            if (IsTutorialMode)
+            {
+                ApplyTutorialUiState();
+                return;
+            }
+
             if (restartButton != null && IsChallengeMode)
-                restartButton.gameObject.SetActive(false);
+                restartButton.gameObject.SetActive(true);
         }
 
         private void FitBoardToCameraFromCurrentBoard()
@@ -537,13 +898,36 @@ namespace ArrowGame
             float halfHeightWithPadding = boardHeight * 0.5f + cameraBoardPadding;
             float halfWidthWithPadding = (boardWidth * 0.5f + cameraBoardPadding) / mainCamera.aspect;
             fittedCameraSize = Mathf.Max(halfHeightWithPadding, halfWidthWithPadding, minimumCameraSize);
-            minAllowedCameraSize = Mathf.Max(minimumCameraSize * 0.6f, fittedCameraSize * minZoomRatio);
+            minAllowedCameraSize = Mathf.Min(fittedCameraSize, GetMinimumZoomInCameraSize(mainCamera));
             maxAllowedCameraSize = fittedCameraSize * maxZoomRatio;
 
             Vector2 boardCenter = (boardWorldMin + boardWorldMax) * 0.5f;
             fittedCameraPosition = new Vector3(boardCenter.x, boardCenter.y, mainCamera.transform.position.z);
             mainCamera.transform.position = fittedCameraPosition;
             mainCamera.orthographicSize = fittedCameraSize;
+        }
+
+        private float GetMinimumZoomInCameraSize(Camera mainCamera)
+        {
+            float aspect = Mathf.Max(0.01f, mainCamera.aspect);
+            float cellSpacing = Mathf.Max(0.01f, GetEffectiveBoardCellSpacing());
+            float visibleRows = Mathf.Max(2, maxZoomVisibleGridRows) - 1 + zoomInCellPadding;
+            float visibleColumns = Mathf.Max(2, maxZoomVisibleGridColumns) - 1 + zoomInCellPadding;
+
+            float sizeFromRows = visibleRows * cellSpacing * 0.5f;
+            float sizeFromColumns = visibleColumns * cellSpacing * 0.5f / aspect;
+            float desiredZoomSize = Mathf.Min(sizeFromRows, sizeFromColumns);
+            float ratioClampedSize = fittedCameraSize * minZoomRatio;
+
+            return Mathf.Max(absoluteMinimumZoomSize, Mathf.Min(ratioClampedSize, desiredZoomSize));
+        }
+
+        private float GetEffectiveBoardCellSpacing()
+        {
+            if (LineGenerator == null)
+                return 1f;
+
+            return Mathf.Max(0.01f, LineGenerator.CurrentRenderCellSpacing);
         }
 
         private void RefreshProgress()
@@ -665,6 +1049,87 @@ namespace ArrowGame
         {
             if (hintAmountText != null)
                 hintAmountText.text = GameDataStore.HintCount.ToString();
+        }
+
+        private void ConfigureTutorialBoard()
+        {
+            LineGenerator.ClearPlayableMask();
+
+            int tutorialIndex = Mathf.Clamp(currentTutorialStep, 0, TutorialBoardSizes.Length - 1);
+            Vector2Int boardSize = TutorialBoardSizes[tutorialIndex];
+            LineGenerator.width = boardSize.x;
+            LineGenerator.height = boardSize.y;
+
+            Random.InitState(TutorialSeeds[tutorialIndex]);
+            ApplyTutorialUiState();
+        }
+
+        private void ApplyTutorialUiState()
+        {
+            SetGameObjectActive(hearts != null && hearts.Length > 0 && hearts[0] != null ? hearts[0].transform.parent.gameObject : null, false);
+            SetGameObjectActive(hintButtonRect != null ? hintButtonRect.gameObject : null, false);
+            SetGameObjectActive(noHintsPanelRect != null ? noHintsPanelRect.gameObject : null, false);
+            SetGameObjectActive(restartButton != null ? restartButton.gameObject : null, false);
+            SetGameObjectActive(mainMenuButton != null ? mainMenuButton.gameObject : null, false);
+            SetGameObjectActive(guideToggleButton != null ? guideToggleButton.gameObject : null, false);
+            SetGameObjectActive(quitConfirmationPanelRect != null ? quitConfirmationPanelRect.gameObject : null, false);
+            SetGameObjectActive(winMessageText != null ? winMessageText.gameObject : null, false);
+            ShowQuitPanel(false, false);
+
+            if (levelText != null)
+            {
+                levelText.fontSize = tutorialHeaderFontSize;
+                levelText.alignment = TextAlignmentOptions.Center;
+                levelText.text = $"TUTORIAL {currentTutorialStep + 1}/{TutorialBoardSizes.Length}\nComplete the tutorial\nEscape the arrow";
+            }
+        }
+
+        private IEnumerator HandleTutorialBoardCompleted()
+        {
+            yield return new WaitForSeconds(tutorialAdvanceDelay);
+
+            if (currentTutorialStep < TutorialBoardSizes.Length - 1)
+            {
+                currentTutorialStep++;
+                LoadTutorialBoard();
+                yield break;
+            }
+
+            GameDataStore.MarkTutorialCompleted();
+            SceneManager.LoadScene(MenuSceneName);
+        }
+
+        private void LoadTutorialBoard()
+        {
+            hasDraggedCurrentTouch = false;
+            isTransitioningToWin = false;
+            isLevelIntroPlaying = false;
+            hasStartedGameplayIntro = false;
+            externalInputLocked = true;
+            guideLinesVisible = false;
+
+            if (winUI != null)
+                winUI.SetActive(false);
+
+            if (loseUI != null)
+                loseUI.SetActive(false);
+
+            SetHintVisible(false, false);
+            HideNoHintsPanel(false);
+            ShowQuitPanel(false, false);
+            SetDamageOverlayVisible(0f);
+
+            ConfigureSeedAndBoard(currentTutorialStep + 1);
+            LineGenerator.GenerateBoard();
+            RefreshBoardAfterGeneration();
+            ApplyTheme();
+            StartCoroutine(BeginGameplayIntroCO());
+        }
+
+        private static void SetGameObjectActive(GameObject target, bool isActive)
+        {
+            if (target != null)
+                target.SetActive(isActive);
         }
 
         private void ResetHintIdleTimer()
@@ -789,6 +1254,7 @@ namespace ArrowGame
         private IEnumerator ShowQuitPanelCO(bool animate)
         {
             quitConfirmationPanelRect.gameObject.SetActive(true);
+            ApplyGameplayThemeOverrides();
             if (animate)
                 yield return AnimateRectTransform(quitConfirmationPanelRect, quitPanelVisibleAnchoredPosition, quitPanelSlideDuration);
             else

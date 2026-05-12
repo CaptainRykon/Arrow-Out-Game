@@ -21,6 +21,7 @@ namespace ArrowGame
         private LineRenderer lineRenderer;
         private readonly List<LineRenderer> segmentRenderers = new();
         private LineRenderer guideRenderer;
+        private bool useContinuousRenderer;
         private Vector2 boardMin;
         private Vector2 boardMax;
         private bool guideVisible;
@@ -54,7 +55,7 @@ namespace ArrowGame
             if (lineRenderer == null)
                 lineRenderer = gameObject.AddComponent<LineRenderer>();
             cachedLineWidth = lineRenderer.startWidth;
-            lineRenderer.enabled = false;
+            lineRenderer.enabled = useContinuousRenderer;
             if (arrow != null)
                 baseArrowScale = Mathf.Max(arrow.localScale.x, 0.0001f);
             SetVisualColor(themeBaseColor);
@@ -80,6 +81,11 @@ namespace ArrowGame
             {
                 Debug.LogWarning("LineController could not find ArrowGameManager during Init.");
             }
+        }
+
+        public void ConfigureRenderingMode(bool useContinuousLineRenderer)
+        {
+            useContinuousRenderer = useContinuousLineRenderer;
         }
 
         public void ConfigureVisualSpacing(float segmentInset, float headInset, float tailInset, float arrowScaleBoost)
@@ -168,7 +174,11 @@ namespace ArrowGame
             edgeCollider2D.points = points.ToArray();
             head.offset = points[0];
             rear.offset = points[^1];
-            RebuildSegmentRenderers();
+
+            if (useContinuousRenderer)
+                UpdateContinuousLineRenderer();
+            else
+                RebuildSegmentRenderers();
 
             if (guideVisible)
                 UpdateGuideLineGeometry();
@@ -433,6 +443,9 @@ namespace ArrowGame
 
         private void RebuildSegmentRenderers()
         {
+            if (lineRenderer != null)
+                lineRenderer.enabled = false;
+
             int segmentCount = Mathf.Max(0, points.Count - 1);
             while (segmentRenderers.Count < segmentCount)
                 segmentRenderers.Add(CreateSegmentRenderer(segmentRenderers.Count));
@@ -477,6 +490,25 @@ namespace ArrowGame
             }
         }
 
+        private void UpdateContinuousLineRenderer()
+        {
+            if (lineRenderer == null)
+                return;
+
+            lineRenderer.enabled = true;
+            lineRenderer.positionCount = points.Count;
+            lineRenderer.startWidth = cachedLineWidth;
+            lineRenderer.endWidth = cachedLineWidth;
+            lineRenderer.startColor = currentVisualColor;
+            lineRenderer.endColor = currentVisualColor;
+
+            for (int i = 0; i < points.Count; i++)
+                lineRenderer.SetPosition(i, points[i]);
+
+            for (int i = 0; i < segmentRenderers.Count; i++)
+                segmentRenderers[i].enabled = false;
+        }
+
         private LineRenderer CreateSegmentRenderer(int index)
         {
             GameObject segmentObject = new($"Segment_{index}");
@@ -502,6 +534,12 @@ namespace ArrowGame
         private void SetVisualColor(Color color)
         {
             currentVisualColor = color;
+
+            if (lineRenderer != null)
+            {
+                lineRenderer.startColor = color;
+                lineRenderer.endColor = color;
+            }
 
             if (arrow != null)
             {

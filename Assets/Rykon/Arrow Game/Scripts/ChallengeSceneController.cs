@@ -97,7 +97,7 @@ namespace ArrowGame
             if (challengeStarted)
                 return;
 
-            if (!GameDataStore.CanPlayChallengeToday(DateTime.UtcNow))
+            if (!GameDataStore.CanEnterChallengeSession(DateTime.UtcNow))
             {
                 ReturnToMenu();
                 return;
@@ -129,7 +129,9 @@ namespace ArrowGame
         private IEnumerator StartChallengeFlowCO()
         {
             DateTime nowUtc = DateTime.UtcNow;
-            GameDataStore.MarkChallengeAttemptUsed(nowUtc);
+            bool startedFromRetry = GameDataStore.ConsumePendingChallengeRetry(nowUtc);
+            if (!startedFromRetry)
+                GameDataStore.MarkChallengeAttemptUsed(nowUtc);
 
             if (leaderboardPanel != null)
                 leaderboardPanel.SetActive(false);
@@ -206,7 +208,27 @@ namespace ArrowGame
         private void HandleChallengeFailed()
         {
             runTimerActive = false;
-            ReturnToMenu();
+            if (arrowGameManager != null)
+            {
+                arrowGameManager.ConfigureChallengeRetryUi(GameDataStore.CanUseChallengeRetry(DateTime.UtcNow));
+                arrowGameManager.SetExternalInputLock(true);
+            }
+        }
+
+        public bool TryUseChallengeRetry()
+        {
+            DateTime nowUtc = DateTime.UtcNow;
+            if (!GameDataStore.CanUseChallengeRetry(nowUtc))
+            {
+                if (arrowGameManager != null)
+                    arrowGameManager.ConfigureChallengeRetryUi(false);
+                return false;
+            }
+
+            runTimerActive = false;
+            GameDataStore.PrepareChallengeRetry(nowUtc);
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            return true;
         }
 
         private void WireButtons()
@@ -227,7 +249,7 @@ namespace ArrowGame
             if (submitScoreButton != null)
                 submitScoreButton.interactable = false;
 
-            ThemeManager.ApplyThemeToScene(gameObject.scene);
+            ApplySceneTheme();
         }
 
         private void SetLoadingState(bool visible, float progress, string statusText)
@@ -244,7 +266,7 @@ namespace ArrowGame
 
         private void RefreshLeaderboardUi()
         {
-            ThemeManager.ApplyThemeToScene(gameObject.scene);
+            ApplySceneTheme();
 
             DateTime nowUtc = DateTime.UtcNow;
             int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
@@ -285,6 +307,17 @@ namespace ArrowGame
             int wholeSeconds = remainingMilliseconds / 1000;
             int milliseconds = remainingMilliseconds % 1000;
             return $"{minutes:00}:{wholeSeconds:00}.{milliseconds:000}";
+        }
+
+        private void ApplySceneTheme()
+        {
+            if (arrowGameManager != null)
+            {
+                arrowGameManager.RefreshTheme();
+                return;
+            }
+
+            ThemeManager.ApplyThemeToScene(gameObject.scene);
         }
 
         private static void RegisterButton(Button button, Action action)

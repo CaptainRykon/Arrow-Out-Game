@@ -12,6 +12,7 @@ namespace ArrowGame
     {
         private const string GameSceneName = "ArrowGame";
         private const string ChallengeSceneName = "Challange";
+        private const string TutorialSceneName = "TutorialScene";
 
         [Header("Panels")]
         [SerializeField] private GameObject homePanel;
@@ -126,6 +127,12 @@ namespace ArrowGame
             RefreshSettingsUi();
         }
 
+        private void Start()
+        {
+            if (!GameDataStore.HasCompletedTutorial)
+                SceneManager.LoadScene(TutorialSceneName);
+        }
+
         private void OnDestroy()
         {
             if (userNameInputField != null)
@@ -154,7 +161,7 @@ namespace ArrowGame
         {
             SoundManager.PlayButtonClick();
             HapticManager.PlayButtonTap();
-            SceneManager.LoadScene(GameSceneName);
+            SceneManager.LoadScene(GameDataStore.HasCompletedTutorial ? GameSceneName : TutorialSceneName);
         }
 
         public void PlayChallenge()
@@ -367,22 +374,109 @@ namespace ArrowGame
             SetLinkState(faqButton, faqUrl);
             SetLinkState(telegramButton, telegramUrl);
             SetLinkState(twitterButton, twitterUrl);
+
+            ApplyMenuThemeOverrides();
         }
 
         private void UpdateToggleVisual(Image background, RectTransform knob, bool isEnabled)
         {
             ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+            Color enabledColor = palette.IsDarkMode ? palette.AccentColor : toggleEnabledColor;
+            Color disabledColor = palette.IsDarkMode ? new Color(0.3f, 0.37f, 0.47f, 1f) : toggleDisabledColor;
 
             if (background != null)
-                background.color = isEnabled ? palette.ToggleEnabledColor : palette.ToggleDisabledColor;
+                background.color = isEnabled ? enabledColor : disabledColor;
 
             if (knob != null)
+            {
                 knob.anchoredPosition = isEnabled ? toggleKnobOnPosition : toggleKnobOffPosition;
+                Image knobImage = knob.GetComponent<Image>();
+                if (knobImage != null)
+                    knobImage.color = Color.white;
+            }
         }
 
         private void ApplyDarkModeState(bool isDarkModeEnabled)
         {
             ThemeManager.ApplyThemeToScene(gameObject.scene);
+        }
+
+        private void ApplyMenuThemeOverrides()
+        {
+            ThemeManager.ThemePalette palette = ThemeManager.CurrentPalette;
+            if (!palette.IsDarkMode)
+                return;
+
+            Color menuCardColor = palette.IsDarkMode
+                ? new Color(0.14f, 0.18f, 0.24f, 0.98f)
+                : new Color(0.31f, 0.33f, 0.48f, 0.96f);
+            Color settingsCardColor = palette.IsDarkMode
+                ? new Color(0.14f, 0.18f, 0.24f, 0.98f)
+                : new Color(0.2f, 0.23f, 0.41f, 0.96f);
+            Color popupCardColor = palette.IsDarkMode
+                ? new Color(0.16f, 0.2f, 0.27f, 0.98f)
+                : Color.white;
+            Color popupOverlayColor = palette.IsDarkMode
+                ? new Color(0.03f, 0.05f, 0.08f, 0.82f)
+                : new Color(0.04f, 0.05f, 0.08f, 0.72f);
+            Color primaryButtonColor = palette.IsDarkMode
+                ? new Color(0.38f, 0.56f, 1f, 1f)
+                : selectedTabColor;
+            Color secondaryButtonColor = palette.IsDarkMode
+                ? new Color(0.33f, 0.48f, 0.92f, 1f)
+                : new Color(0.35f, 0.43f, 0.98f, 1f);
+            Color linkButtonColor = palette.IsDarkMode
+                ? new Color(0.2f, 0.25f, 0.33f, 1f)
+                : new Color(0.25f, 0.31f, 0.49f, 1f);
+            Color disabledButtonColor = palette.IsDarkMode
+                ? new Color(0.16f, 0.2f, 0.28f, 1f)
+                : new Color(0.28f, 0.32f, 0.52f, 0.96f);
+            Color buttonTextColor = Color.white;
+            Color disabledTextColor = palette.IsDarkMode
+                ? new Color(0.77f, 0.83f, 0.92f, 1f)
+                : new Color(0.93f, 0.95f, 1f, 1f);
+
+            SetImageColor(settingsPanel != null ? settingsPanel.GetComponent<Image>() : null, settingsCardColor);
+            SetImageColor(FindAncestorImage(vibrationToggleButton), settingsCardColor);
+            SetImageColor(FindAncestorImage(privacyButton), settingsCardColor);
+            SetImageColor(FindAncestorImage(challengeTitleText), menuCardColor);
+            SetImageColor(FindAncestorImage(streakHeadlineText), popupCardColor);
+            SetImageColor(streakPanel != null ? streakPanel.GetComponent<Image>() : null, popupOverlayColor);
+
+            ThemeManager.ApplyButtonTheme(primaryPlayButton, primaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(cardPlayButton, primaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(challengePlayButton, primaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(streakButton, secondaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(closeStreakButton, secondaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(privacyButton, linkButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(termsButton, linkButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(faqButton, linkButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(telegramButton, linkButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(twitterButton, linkButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+        }
+
+        private static void SetImageColor(Image image, Color color)
+        {
+            if (image != null)
+                image.color = color;
+        }
+
+        private static Image FindAncestorImage(Component component)
+        {
+            if (component == null)
+                return null;
+
+            Transform current = component.transform.parent;
+            while (current != null)
+            {
+                Image image = current.GetComponent<Image>();
+                if (image != null)
+                    return image;
+
+                current = current.parent;
+            }
+
+            return null;
         }
 
         private static void ApplyImageColors(Image[] images, Color color)
@@ -578,6 +672,8 @@ namespace ArrowGame
                 if (streakDayViews[i] != null)
                     streakDayViews[i].Bind(i + 1, isPlayed, isCurrentDay, isMissed);
             }
+
+            ApplyMenuThemeOverrides();
         }
 
         private static string FormatCountdown(TimeSpan timeSpan)

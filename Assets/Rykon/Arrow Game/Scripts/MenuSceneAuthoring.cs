@@ -125,7 +125,9 @@ namespace ArrowGame
             if (!HasRequiredChallengeReferences(refs))
                 return;
 
+#if UNITY_EDITOR
             AssignChallengeReferences(controller, refs);
+#endif
 
 #if UNITY_EDITOR
             UnityEditor.EditorUtility.SetDirty(controller);
@@ -154,7 +156,9 @@ namespace ArrowGame
             if (!HasRequiredSettingsReferences(refs))
                 return;
 
+#if UNITY_EDITOR
             AssignSettingsReferences(controller, refs);
+#endif
 
 #if UNITY_EDITOR
             UnityEditor.EditorUtility.SetDirty(controller);
@@ -195,10 +199,7 @@ namespace ArrowGame
             LayoutElement cardLayout = card.gameObject.AddComponent<LayoutElement>();
             cardLayout.flexibleWidth = 1f;
 
-            Image cardImage = card.gameObject.AddComponent<Image>();
-            cardImage.sprite = GetRuntimeSprite();
-            cardImage.color = cardColor;
-            cardImage.type = Image.Type.Sliced;
+            Image cardImage = EnsureImage(card.gameObject, cardColor, Image.Type.Sliced);
 
             VerticalLayoutGroup layout = card.gameObject.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(32, 32, 32, 32);
@@ -223,9 +224,7 @@ namespace ArrowGame
         {
             RectTransform overlay = CreateRect("Challenge Streak Panel", canvasRoot);
             StretchRect(overlay);
-            Image overlayImage = overlay.gameObject.AddComponent<Image>();
-            overlayImage.sprite = GetRuntimeSprite();
-            overlayImage.color = new Color(0.04f, 0.05f, 0.08f, 0.72f);
+            Image overlayImage = EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.72f));
 
             RectTransform card = CreateRect("Streak Popup Card", overlay);
             card.anchorMin = new Vector2(0.5f, 0.5f);
@@ -234,10 +233,7 @@ namespace ArrowGame
             card.sizeDelta = new Vector2(760f, 1040f);
             card.anchoredPosition = Vector2.zero;
 
-            Image cardImage = card.gameObject.AddComponent<Image>();
-            cardImage.sprite = GetRuntimeSprite();
-            cardImage.color = Color.white;
-            cardImage.type = Image.Type.Sliced;
+            Image cardImage = EnsureImage(card.gameObject, Color.white, Image.Type.Sliced);
 
             VerticalLayoutGroup cardLayout = card.gameObject.AddComponent<VerticalLayoutGroup>();
             cardLayout.padding = new RectOffset(56, 56, 72, 72);
@@ -250,10 +246,7 @@ namespace ArrowGame
 
             RectTransform flame = CreateRect("Flame", card);
             flame.sizeDelta = new Vector2(210f, 210f);
-            Image flameImage = flame.gameObject.AddComponent<Image>();
-            flameImage.sprite = GetRuntimeSprite();
-            flameImage.color = new Color(1f, 0.63f, 0.12f, 1f);
-            flameImage.type = Image.Type.Sliced;
+            Image flameImage = EnsureImage(flame.gameObject, new Color(1f, 0.63f, 0.12f, 1f), Image.Type.Sliced);
 
             CreateNamedLabel(card, "Streak Headline", "0 day streak", 52f, new Color(0.2f, 0.24f, 0.42f, 1f));
 
@@ -287,10 +280,7 @@ namespace ArrowGame
 
                 RectTransform dayBubble = CreateRect("Day Bubble", dayItem);
                 dayBubble.sizeDelta = new Vector2(72f, 72f);
-                Image dayBubbleImage = dayBubble.gameObject.AddComponent<Image>();
-                dayBubbleImage.sprite = GetRuntimeSprite();
-                dayBubbleImage.color = new Color(0.93f, 0.93f, 0.98f, 1f);
-                dayBubbleImage.type = Image.Type.Sliced;
+                Image dayBubbleImage = EnsureImage(dayBubble.gameObject, new Color(0.93f, 0.93f, 0.98f, 1f), Image.Type.Sliced);
 
                 TextMeshProUGUI stateLabel = CreateNamedLabel(dayBubble, "State Label", "Today", 16f, new Color(0.28f, 0.31f, 0.48f, 1f));
                 GameObject playedMarker = CreateMarker(dayBubble, "Played Marker", "OK", 20f, Color.white);
@@ -521,10 +511,7 @@ namespace ArrowGame
             layout.preferredHeight = preferredHeight;
             layout.flexibleWidth = 1f;
 
-            Image image = card.gameObject.AddComponent<Image>();
-            image.sprite = GetRuntimeSprite();
-            image.color = settingsCardColor;
-            image.type = Image.Type.Sliced;
+            Image image = EnsureImage(card.gameObject, settingsCardColor, Image.Type.Sliced);
 
             VerticalLayoutGroup verticalLayout = card.gameObject.AddComponent<VerticalLayoutGroup>();
             verticalLayout.padding = new RectOffset(24, 24, 24, 24);
@@ -556,10 +543,7 @@ namespace ArrowGame
             LayoutElement iconLayout = iconRect.gameObject.AddComponent<LayoutElement>();
             iconLayout.preferredWidth = 48f;
             iconLayout.preferredHeight = 48f;
-            Image iconImage = iconRect.gameObject.AddComponent<Image>();
-            iconImage.sprite = GetRuntimeSprite();
-            iconImage.color = Color.white;
-            iconImage.type = Image.Type.Sliced;
+            Image iconImage = EnsureImage(iconRect.gameObject, Color.white, Image.Type.Sliced);
 
             RectTransform labelRect = CreateRect($"{label} Label", row);
             LayoutElement labelLayout = labelRect.gameObject.AddComponent<LayoutElement>();
@@ -571,10 +555,7 @@ namespace ArrowGame
             LayoutElement toggleLayout = toggleRect.gameObject.AddComponent<LayoutElement>();
             toggleLayout.preferredWidth = 126f;
             toggleLayout.preferredHeight = 62f;
-            Image toggleImage = toggleRect.gameObject.AddComponent<Image>();
-            toggleImage.sprite = GetRuntimeSprite();
-            toggleImage.color = settingsAccentColor;
-            toggleImage.type = Image.Type.Sliced;
+            Image toggleImage = EnsureImage(toggleRect.gameObject, settingsAccentColor, Image.Type.Sliced);
             Button toggleButton = toggleRect.gameObject.AddComponent<Button>();
             toggleButton.targetGraphic = toggleImage;
 
@@ -584,10 +565,7 @@ namespace ArrowGame
             knob.pivot = new Vector2(0.5f, 0.5f);
             knob.sizeDelta = new Vector2(52f, 52f);
             knob.anchoredPosition = new Vector2(26f, 0f);
-            Image knobImage = knob.gameObject.AddComponent<Image>();
-            knobImage.sprite = GetRuntimeSprite();
-            knobImage.color = toggleKnobColor;
-            knobImage.type = Image.Type.Sliced;
+            Image knobImage = EnsureImage(knob.gameObject, toggleKnobColor, Image.Type.Sliced);
         }
 
         private void CreateLinkRow(Transform parent, string label)
@@ -597,10 +575,7 @@ namespace ArrowGame
             layout.preferredHeight = 76f;
             layout.flexibleWidth = 1f;
 
-            Image image = buttonRect.gameObject.AddComponent<Image>();
-            image.sprite = GetRuntimeSprite();
-            image.color = settingsAccentColor;
-            image.type = Image.Type.Sliced;
+            Image image = EnsureImage(buttonRect.gameObject, settingsAccentColor, Image.Type.Sliced);
 
             Button button = buttonRect.gameObject.AddComponent<Button>();
             button.targetGraphic = image;
@@ -624,10 +599,7 @@ namespace ArrowGame
             layout.preferredWidth = 0f;
             layout.flexibleWidth = 1f;
 
-            Image background = root.gameObject.AddComponent<Image>();
-            background.sprite = GetRuntimeSprite();
-            background.color = settingsCardColor;
-            background.type = Image.Type.Sliced;
+            Image background = EnsureImage(root.gameObject, settingsCardColor, Image.Type.Sliced);
 
             TMP_InputField inputField = root.gameObject.AddComponent<TMP_InputField>();
             inputField.targetGraphic = background;
@@ -654,10 +626,7 @@ namespace ArrowGame
         {
             RectTransform rect = CreateRect($"{label} Button", parent);
             rect.sizeDelta = size;
-            Image image = rect.gameObject.AddComponent<Image>();
-            image.sprite = GetRuntimeSprite();
-            image.color = accentColor;
-            image.type = Image.Type.Sliced;
+            Image image = EnsureImage(rect.gameObject, accentColor, Image.Type.Sliced);
             Button button = rect.gameObject.AddComponent<Button>();
             button.targetGraphic = image;
             CreateNamedLabel(rect, "Label", label, 34f, textPrimaryColor);
@@ -896,6 +865,22 @@ namespace ArrowGame
             }
 #endif
             DestroyImmediate(gameObject);
+        }
+
+        private static Image EnsureImage(GameObject gameObject, Color defaultColor, Image.Type defaultType = Image.Type.Simple)
+        {
+            Image image = gameObject.GetComponent<Image>();
+            if (image == null)
+            {
+                image = gameObject.AddComponent<Image>();
+                image.color = defaultColor;
+                image.type = defaultType;
+            }
+
+            if (image.sprite == null)
+                image.sprite = GetRuntimeSprite();
+
+            return image;
         }
 
         private static Sprite GetRuntimeSprite()

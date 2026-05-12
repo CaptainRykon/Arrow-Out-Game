@@ -14,6 +14,12 @@ namespace ArrowGame
         public int height = 10;
         public int maxLineLength = 10;
 
+        [Header("Reference Generation")]
+        public int minGeneratedLineLength = 3;
+        public int maskedGenerationAttempts = 72;
+        [Range(0f, 1f)] public float maskedPathMomentumBias = 0.68f;
+        [Range(0.5f, 1f)] public float challengeCellSpacingScale = 0.74f;
+
         [Header("Line Visuals")]
         public float renderCellSpacing = 1.7f;
         public float lineWidth = 0.2f;
@@ -56,6 +62,7 @@ namespace ArrowGame
         public float introSpawnOffsetPadding = 4f;
 
         public bool HasGeneratedBoard { get; private set; }
+        public float CurrentRenderCellSpacing => GetEffectiveRenderCellSpacing();
 
         private const float StraightWeight = 4.8f;
         private const int MinimumRunLength = 3;
@@ -141,14 +148,16 @@ namespace ArrowGame
             List<PathCandidate> candidates;
             if (playableMask != null)
             {
-                if (!TryBuildPuzzle(activeMask, out candidates) &&
+                if (!TryBuildReferenceMaskedPuzzle(activeMask, out candidates) &&
+                    !TryBuildPuzzle(activeMask, out candidates) &&
                     !TryBuildSeparatedPuzzle(activeMask, out candidates) &&
                     !TryBuildSparsePuzzle(activeMask, out candidates))
                 {
                     candidates = BuildConservativePuzzle(activeMask);
                 }
             }
-            else if (!TryBuildPuzzle(activeMask, out candidates))
+            else if (!TryBuildReferenceClassicPuzzle(out candidates) &&
+                     !TryBuildPuzzle(activeMask, out candidates))
             {
                 candidates = BuildConservativePuzzle(activeMask);
             }
@@ -241,6 +250,513 @@ namespace ArrowGame
                     continue;
 
                 dot.Transform.gameObject.SetActive(false);
+            }
+        }
+
+        private bool TryBuildReferenceMaskedPuzzle(bool[,] activeMask, out List<PathCandidate> candidates)
+        {
+            candidates = null;
+
+            int targetOccupiedCells = GetActiveCells(activeMask).Count;
+            if (targetOccupiedCells <= 1)
+            {
+                candidates = new List<PathCandidate>();
+                return true;
+            }
+
+            List<PathCandidate> best = null;
+            int bestOccupiedCount = -1;
+            int attemptCount = Mathf.Max(4, maskedGenerationAttempts);
+
+            for (int attempt = 0; attempt < attemptCount; attempt++)
+            {
+                List<GeneratedPolyline> generated = GenerateReferenceMaskedPolylines(activeMask);
+                if (generated.Count == 0)
+                    continue;
+
+                List<PathCandidate> built = null;
+                if (TrySolveReferenceRemoval(generated, activeMask.GetLength(0), activeMask.GetLength(1), out int[] headIndices, out List<int> removalOrder))
+                {
+                    built = BuildCandidatesFromGeneratedPolylines(generated, headIndices, removalOrder);
+                }
+                else
+                {
+                    List<PathCandidate> rawCandidates = BuildCandidatesFromGeneratedPolylines(generated);
+                    if (rawCandidates.Count > 0)
+                        built = BuildBestEffortSubset(rawCandidates, activeMask, false);
+                }
+
+                if (built == null || built.Count == 0)
+                    continue;
+
+                int occupiedCount = CountOccupiedCells(built);
+                if (occupiedCount > bestOccupiedCount ||
+                    (occupiedCount == bestOccupiedCount && (best == null || built.Count > best.Count)))
+                {
+                    best = built;
+                    bestOccupiedCount = occupiedCount;
+                }
+
+                if (occupiedCount >= targetOccupiedCells)
+                    break;
+            }
+
+            if (best == null)
+                return false;
+
+            candidates = best;
+            return true;
+        }
+
+        private bool TryBuildReferenceClassicPuzzle(out List<PathCandidate> candidates)
+        {
+            candidates = new List<PathCandidate>();
+
+            int localWidth = Mathf.Max(1, width);
+            int localHeight = Mathf.Max(1, height);
+            bool[,] occupied = new bool[localWidth, localHeight];
+            int depth = 0;
+
+            while (TryGenerateReferenceClassicLine(occupied, localWidth, localHeight, out List<Vector2Int> cells))
+            {
+                if (cells == null || cells.Count < 2)
+                    continue;
+
+                candidates.Add(new PathCandidate(cells, BuildWorldPath(cells), depth++));
+            }
+
+            return candidates.Count > 0;
+        }
+
+        private List<GeneratedPolyline> GenerateReferenceMaskedPolylines(bool[,] activeMask)
+        {
+            int localWidth = activeMask.GetLength(0);
+            int localHeight = activeMask.GetLength(1);
+            bool[,] visited = new bool[localWidth, localHeight];
+
+            List<GeneratedPolyline> polylines = new();
+            for (int x = 0; x < localWidth; x++)
+            {
+                for (int y = 0; y < localHeight; y++)
+                {
+                    if (!activeMask[x, y] || visited[x, y])
+                        continue;
+
+                    List<Vector2Int> cells = BuildReferenceMaskedPolyline(new Vector2Int(x, y), activeMask, visited);
+                    if (cells.Count >= 2)
+                    {
+                        polylines.Add(new GeneratedPolyline(cells));
+                        continue;
+                    }
+
+                    // Let later neighbors absorb single orphan cells instead of permanently losing them.
+                    for (int i = 0; i < cells.Count; i++)
+                        visited[cells[i].x, cells[i].y] = false;
+                }
+            }
+
+            return polylines;
+        }
+
+        private List<Vector2Int> BuildReferenceMaskedPolyline(Vector2Int start, bool[,] activeMask, bool[,] visited)
+        {
+            List<Vector2Int> cells = new() { start };
+            visited[start.x, start.y] = true;
+
+            Vector2Int current = start;
+            Vector2Int lastDirection = Vector2Int.zero;
+            int minLength = Mathf.Max(2, minGeneratedLineLength);
+            int maxLength = Mathf.Max(minLength, maxLineLength);
+            int targetLength = Random.Range(minLength, maxLength + 1);
+
+            for (int step = 1; step < targetLength; step++)
+            {
+                List<Vector2Int> neighbors = GetUnvisitedWalkableNeighbors(current, activeMask, visited);
+                if (neighbors.Count == 0)
+                    break;
+
+                Vector2Int next = ChooseMaskedNeighbor(current, lastDirection, neighbors);
+                lastDirection = next - current;
+                current = next;
+                cells.Add(current);
+                visited[current.x, current.y] = true;
+            }
+
+            return cells;
+        }
+
+        private List<Vector2Int> GetUnvisitedWalkableNeighbors(Vector2Int cell, bool[,] activeMask, bool[,] visited)
+        {
+            List<Vector2Int> neighbors = new();
+            for (int i = 0; i < Directions.Length; i++)
+            {
+                Vector2Int next = cell + Directions[i];
+                if (!IsInside(next, activeMask.GetLength(0), activeMask.GetLength(1)))
+                    continue;
+
+                if (!activeMask[next.x, next.y] || visited[next.x, next.y])
+                    continue;
+
+                neighbors.Add(next);
+            }
+
+            return neighbors;
+        }
+
+        private Vector2Int ChooseMaskedNeighbor(Vector2Int current, Vector2Int lastDirection, List<Vector2Int> neighbors)
+        {
+            if (lastDirection != Vector2Int.zero)
+            {
+                Vector2Int straight = current + lastDirection;
+                for (int i = 0; i < neighbors.Count; i++)
+                {
+                    if (neighbors[i] == straight && Random.value <= maskedPathMomentumBias)
+                        return neighbors[i];
+                }
+            }
+
+            return neighbors[Random.Range(0, neighbors.Count)];
+        }
+
+        private bool TrySolveReferenceRemoval(
+            List<GeneratedPolyline> polylines,
+            int localWidth,
+            int localHeight,
+            out int[] headIndices,
+            out List<int> removalOrder)
+        {
+            int count = polylines.Count;
+            headIndices = new int[count];
+            removalOrder = new List<int>(count);
+            bool[] removed = new bool[count];
+
+            int[,] occupancy = new int[localWidth, localHeight];
+            for (int x = 0; x < localWidth; x++)
+            {
+                for (int y = 0; y < localHeight; y++)
+                    occupancy[x, y] = -1;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                List<Vector2Int> cells = polylines[i].Cells;
+                for (int cellIndex = 0; cellIndex < cells.Count; cellIndex++)
+                    occupancy[cells[cellIndex].x, cells[cellIndex].y] = i;
+            }
+
+            int removedCount = 0;
+            while (removedCount < count)
+            {
+                bool foundAny = false;
+                for (int i = 0; i < count; i++)
+                {
+                    if (removed[i])
+                        continue;
+
+                    List<Vector2Int> cells = polylines[i].Cells;
+                    if (cells.Count < 2)
+                        continue;
+
+                    if (IsReferenceHeadFree(cells, 0, occupancy, localWidth, localHeight))
+                    {
+                        headIndices[i] = 0;
+                        RemoveReferencePolyline(i, cells, occupancy, removed, removalOrder);
+                        removedCount++;
+                        foundAny = true;
+                        break;
+                    }
+
+                    int tailHeadIndex = cells.Count - 1;
+                    if (IsReferenceHeadFree(cells, tailHeadIndex, occupancy, localWidth, localHeight))
+                    {
+                        headIndices[i] = tailHeadIndex;
+                        RemoveReferencePolyline(i, cells, occupancy, removed, removalOrder);
+                        removedCount++;
+                        foundAny = true;
+                        break;
+                    }
+                }
+
+                if (!foundAny)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private bool IsReferenceHeadFree(List<Vector2Int> cells, int headIndex, int[,] occupancy, int localWidth, int localHeight)
+        {
+            if (cells == null || cells.Count < 2)
+                return false;
+
+            Vector2Int head = cells[headIndex];
+            Vector2Int neck = headIndex == 0 ? cells[1] : cells[cells.Count - 2];
+            Vector2Int direction = new(
+                Mathf.Clamp(head.x - neck.x, -1, 1),
+                Mathf.Clamp(head.y - neck.y, -1, 1));
+
+            if (direction == Vector2Int.zero)
+                return false;
+
+            Vector2Int cursor = head + direction;
+            while (IsInside(cursor, localWidth, localHeight))
+            {
+                if (occupancy[cursor.x, cursor.y] != -1)
+                    return false;
+
+                cursor += direction;
+            }
+
+            return true;
+        }
+
+        private void RemoveReferencePolyline(
+            int lineIndex,
+            List<Vector2Int> cells,
+            int[,] occupancy,
+            bool[] removed,
+            List<int> removalOrder)
+        {
+            removed[lineIndex] = true;
+            removalOrder.Add(lineIndex);
+
+            for (int i = 0; i < cells.Count; i++)
+                occupancy[cells[i].x, cells[i].y] = -1;
+        }
+
+        private List<PathCandidate> BuildCandidatesFromGeneratedPolylines(
+            List<GeneratedPolyline> polylines,
+            int[] headIndices,
+            List<int> removalOrder)
+        {
+            Dictionary<int, int> removalRank = new();
+            for (int i = 0; i < removalOrder.Count; i++)
+                removalRank[removalOrder[i]] = i;
+
+            List<PathCandidate> candidates = new();
+            for (int i = 0; i < polylines.Count; i++)
+            {
+                List<Vector2Int> cells = new(polylines[i].Cells);
+                if (cells.Count < 2)
+                    continue;
+
+                if (headIndices[i] != 0)
+                    cells.Reverse();
+
+                int depth = removalRank.TryGetValue(i, out int rank) ? rank : i;
+                candidates.Add(new PathCandidate(cells, BuildWorldPath(cells), depth));
+            }
+
+            return candidates;
+        }
+
+        private List<PathCandidate> BuildCandidatesFromGeneratedPolylines(List<GeneratedPolyline> polylines)
+        {
+            List<PathCandidate> candidates = new();
+            if (polylines == null)
+                return candidates;
+
+            for (int i = 0; i < polylines.Count; i++)
+            {
+                List<Vector2Int> cells = polylines[i].Cells;
+                if (cells == null || cells.Count < 2)
+                    continue;
+
+                candidates.Add(new PathCandidate(new List<Vector2Int>(cells), BuildWorldPath(cells), i));
+            }
+
+            return candidates;
+        }
+
+        private bool TryGenerateReferenceClassicLine(bool[,] occupied, int localWidth, int localHeight, out List<Vector2Int> cells)
+        {
+            cells = null;
+            Vector2Int? startPoint = FindReferenceClassicStartPoint(occupied, localWidth, localHeight);
+            if (!startPoint.HasValue)
+                return false;
+
+            Vector2Int start = startPoint.Value;
+            Vector2Int? headDirection = FindReferenceClassicHeadDirection(start, occupied, localWidth, localHeight);
+            if (!headDirection.HasValue)
+                return false;
+
+            List<Vector2Int> lineCells = new() { start };
+            List<Vector2Int> reservedForward = new();
+
+            occupied[start.x, start.y] = true;
+            MarkReferenceClassicForward(start, headDirection.Value, occupied, reservedForward, localWidth, localHeight);
+
+            Vector2Int current = start;
+            Vector2Int currentDirection = -headDirection.Value;
+            int remaining = Mathf.Max(1, maxLineLength - 1);
+
+            while (remaining > 0)
+            {
+                int maxSegmentLength = GetReferenceClassicSegmentLength(current, currentDirection, occupied, localWidth, localHeight);
+                if (maxSegmentLength <= 0)
+                    break;
+
+                int segmentLength = Random.Range(1, Mathf.Min(maxSegmentLength, remaining) + 1);
+                for (int i = 1; i <= segmentLength; i++)
+                {
+                    Vector2Int next = current + currentDirection * i;
+                    if (!IsInside(next, localWidth, localHeight) || occupied[next.x, next.y])
+                        break;
+
+                    lineCells.Add(next);
+                    occupied[next.x, next.y] = true;
+                    remaining--;
+                }
+
+                current = lineCells[lineCells.Count - 1];
+                Vector2Int? nextDirection = FindReferenceClassicContinuation(current, occupied, localWidth, localHeight);
+                if (!nextDirection.HasValue || nextDirection.Value == -currentDirection)
+                    break;
+
+                currentDirection = nextDirection.Value;
+            }
+
+            ClearReferenceClassicForward(occupied, reservedForward);
+
+            if (lineCells.Count < 2)
+            {
+                for (int i = 0; i < lineCells.Count; i++)
+                    occupied[lineCells[i].x, lineCells[i].y] = false;
+
+                return false;
+            }
+
+            cells = lineCells;
+            return true;
+        }
+
+        private Vector2Int? FindReferenceClassicStartPoint(bool[,] occupied, int localWidth, int localHeight)
+        {
+            Vector2Int center = new(localWidth / 2, localHeight / 2);
+            int maxRadius = Mathf.Max(localWidth, localHeight);
+
+            for (int radius = 0; radius <= maxRadius; radius++)
+            {
+                for (int x = center.x - radius; x <= center.x + radius; x++)
+                {
+                    for (int y = center.y - radius; y <= center.y + radius; y++)
+                    {
+                        if (x < 1 || x >= localWidth - 1 || y < 1 || y >= localHeight - 1)
+                            continue;
+
+                        if (Mathf.Abs(x - center.x) != radius && Mathf.Abs(y - center.y) != radius)
+                            continue;
+
+                        if (occupied[x, y])
+                            continue;
+
+                        Vector2Int point = new(x, y);
+                        if (FindReferenceClassicHeadDirection(point, occupied, localWidth, localHeight).HasValue)
+                            return point;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private Vector2Int? FindReferenceClassicHeadDirection(Vector2Int point, bool[,] occupied, int localWidth, int localHeight)
+        {
+            List<Vector2Int> available = new();
+            for (int i = 0; i < Directions.Length; i++)
+            {
+                Vector2Int direction = Directions[i];
+                if (!IsReferenceClassicDirectionBlocked(point, direction, occupied, localWidth, localHeight) &&
+                    GetReferenceClassicSegmentLength(point, -direction, occupied, localWidth, localHeight) > 1)
+                {
+                    available.Add(direction);
+                }
+            }
+
+            if (available.Count == 0)
+                return null;
+
+            return available[Random.Range(0, available.Count)];
+        }
+
+        private Vector2Int? FindReferenceClassicContinuation(Vector2Int point, bool[,] occupied, int localWidth, int localHeight)
+        {
+            List<Vector2Int> available = new();
+            for (int i = 0; i < Directions.Length; i++)
+            {
+                Vector2Int direction = Directions[i];
+                if (GetReferenceClassicSegmentLength(point, direction, occupied, localWidth, localHeight) > 0)
+                    available.Add(direction);
+            }
+
+            if (available.Count == 0)
+                return null;
+
+            return available[Random.Range(0, available.Count)];
+        }
+
+        private bool IsReferenceClassicDirectionBlocked(Vector2Int point, Vector2Int direction, bool[,] occupied, int localWidth, int localHeight)
+        {
+            Vector2Int cursor = point + direction;
+            while (IsInside(cursor, localWidth, localHeight))
+            {
+                if (occupied[cursor.x, cursor.y])
+                    return true;
+
+                cursor += direction;
+            }
+
+            return false;
+        }
+
+        private int GetReferenceClassicSegmentLength(Vector2Int startPoint, Vector2Int direction, bool[,] occupied, int localWidth, int localHeight)
+        {
+            int length = 0;
+            for (int i = 1; i <= Mathf.Max(1, maxLineLength); i++)
+            {
+                Vector2Int checkPoint = startPoint + direction * i;
+                if (!IsInside(checkPoint, localWidth, localHeight) || occupied[checkPoint.x, checkPoint.y])
+                    break;
+
+                length = i;
+            }
+
+            return length;
+        }
+
+        private void MarkReferenceClassicForward(
+            Vector2Int headPosition,
+            Vector2Int headDirection,
+            bool[,] occupied,
+            List<Vector2Int> reserved,
+            int localWidth,
+            int localHeight)
+        {
+            Vector2Int cursor = headPosition + headDirection;
+            while (IsInside(cursor, localWidth, localHeight))
+            {
+                if (!occupied[cursor.x, cursor.y])
+                {
+                    occupied[cursor.x, cursor.y] = true;
+                    reserved.Add(cursor);
+                }
+
+                cursor += headDirection;
+            }
+        }
+
+        private static void ClearReferenceClassicForward(bool[,] occupied, List<Vector2Int> reserved)
+        {
+            for (int i = 0; i < reserved.Count; i++)
+                occupied[reserved[i].x, reserved[i].y] = false;
+        }
+
+        private void ShuffleInPlace<T>(List<T> values)
+        {
+            for (int i = values.Count - 1; i > 0; i--)
+            {
+                int swapIndex = Random.Range(0, i + 1);
+                (values[i], values[swapIndex]) = (values[swapIndex], values[i]);
             }
         }
 
@@ -860,15 +1376,23 @@ namespace ArrowGame
             controller.points = new List<Vector2>(candidate.WorldPoints);
             controller.moveSpeed = 30f;
             controller.board = boardEscapeLimit;
+            controller.ConfigureRenderingMode(playableMask == null);
 
             Transform arrowTransform = CreateArrow(lineObject.transform, candidate.WorldPoints);
             controller.arrow = arrowTransform;
             controller.ConfigureBoardBounds(boardMin, boardMax);
-            controller.ConfigureVisualSpacing(
-                GetEffectiveSegmentEndpointInset(),
-                GetEffectiveHeadEndpointInset(),
-                GetEffectiveTailEndpointInset(),
-                arrowScaleMultiplier);
+            if (playableMask != null)
+            {
+                controller.ConfigureVisualSpacing(
+                    GetEffectiveSegmentEndpointInset(),
+                    GetEffectiveHeadEndpointInset(),
+                    GetEffectiveTailEndpointInset(),
+                    arrowScaleMultiplier);
+            }
+            else
+            {
+                controller.ConfigureVisualSpacing(0f, 0f, 0f, 1f);
+            }
             controller.ConfigureGuideLine(runtimeLineMaterial, guideLineWidth, guideLineColor, guideLineSortingOrder);
             controller.ConfigureIntroOffset(BuildIntroOffset(candidate.WorldPoints[0]));
             controller.Init();
@@ -1149,38 +1673,57 @@ namespace ArrowGame
 
         private void GetFallbackBounds(out Vector2 minBounds, out Vector2 maxBounds)
         {
-            float halfWidth = Mathf.Max(0f, (Mathf.Max(width, 1) - 1) * renderCellSpacing * 0.5f);
-            float halfHeight = Mathf.Max(0f, (Mathf.Max(height, 1) - 1) * renderCellSpacing * 0.5f);
+            float spacing = GetEffectiveRenderCellSpacing();
+            float halfWidth = Mathf.Max(0f, (Mathf.Max(width, 1) - 1) * spacing * 0.5f);
+            float halfHeight = Mathf.Max(0f, (Mathf.Max(height, 1) - 1) * spacing * 0.5f);
             minBounds = new Vector2(-halfWidth, -halfHeight);
             maxBounds = new Vector2(halfWidth, halfHeight);
         }
 
         private Vector2 GetCellCenter(Vector2Int cell)
         {
-            float xOffset = (Mathf.Max(width, 1) - 1) * renderCellSpacing * 0.5f;
-            float yOffset = (Mathf.Max(height, 1) - 1) * renderCellSpacing * 0.5f;
-            return new Vector2(cell.x * renderCellSpacing - xOffset, cell.y * renderCellSpacing - yOffset);
+            float spacing = GetEffectiveRenderCellSpacing();
+            float xOffset = (Mathf.Max(width, 1) - 1) * spacing * 0.5f;
+            float yOffset = (Mathf.Max(height, 1) - 1) * spacing * 0.5f;
+            return new Vector2(cell.x * spacing - xOffset, cell.y * spacing - yOffset);
         }
 
         private float GetEffectiveLineWidth()
         {
-            float maxWidthFromSpacing = renderCellSpacing * 0.07f;
+            float maxWidthFromSpacing = GetEffectiveRenderCellSpacing() * 0.08f;
             return Mathf.Min(lineWidth, maxWidthFromSpacing);
         }
 
         private float GetEffectiveSegmentEndpointInset()
         {
-            return Mathf.Max(segmentEndpointInset, renderCellSpacing * 0.24f);
+            float spacing = GetEffectiveRenderCellSpacing();
+            return playableMask != null
+                ? Mathf.Min(segmentEndpointInset, spacing * 0.18f)
+                : Mathf.Max(segmentEndpointInset, spacing * 0.24f);
         }
 
         private float GetEffectiveHeadEndpointInset()
         {
-            return Mathf.Max(headEndpointInset, renderCellSpacing * 0.42f);
+            float spacing = GetEffectiveRenderCellSpacing();
+            return playableMask != null
+                ? Mathf.Min(headEndpointInset, spacing * 0.22f)
+                : Mathf.Max(headEndpointInset, spacing * 0.42f);
         }
 
         private float GetEffectiveTailEndpointInset()
         {
-            return Mathf.Max(tailEndpointInset, renderCellSpacing * 0.34f);
+            float spacing = GetEffectiveRenderCellSpacing();
+            return playableMask != null
+                ? Mathf.Min(tailEndpointInset, spacing * 0.2f)
+                : Mathf.Max(tailEndpointInset, spacing * 0.34f);
+        }
+
+        private float GetEffectiveRenderCellSpacing()
+        {
+            if (playableMask == null)
+                return renderCellSpacing;
+
+            return renderCellSpacing * challengeCellSpacingScale;
         }
 
         private static bool[,] CloneMask(bool[,] source)
@@ -2002,6 +2545,16 @@ namespace ArrowGame
                 SourceIndex = sourceIndex;
                 Candidate = candidate;
                 Score = score;
+            }
+        }
+
+        private sealed class GeneratedPolyline
+        {
+            public readonly List<Vector2Int> Cells;
+
+            public GeneratedPolyline(List<Vector2Int> cells)
+            {
+                Cells = cells;
             }
         }
 

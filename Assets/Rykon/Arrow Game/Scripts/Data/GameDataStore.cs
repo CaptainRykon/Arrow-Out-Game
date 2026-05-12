@@ -20,9 +20,12 @@ namespace ArrowGame.Data
         private const string PlayerNameKey = "player_name";
         private const string ChallengePlayerNameKey = "challenge_player_name";
         private const string ChallengeLastPlayedUtcDayKey = "challenge_last_played_utc_day";
+        private const string ChallengeRetryUsedUtcDayKey = "challenge_retry_used_utc_day";
+        private const string ChallengePendingRetryUtcDayKey = "challenge_pending_retry_utc_day";
         private const string VibrationEnabledKey = "vibration_enabled";
         private const string SoundEnabledKey = "sound_enabled";
         private const string DarkModeEnabledKey = "dark_mode_enabled";
+        private const string TutorialCompletedKey = "tutorial_completed";
         private const int DefaultLevel = 1;
         private const int DefaultHintCount = 10;
         private const bool DefaultVibrationEnabled = true;
@@ -31,6 +34,8 @@ namespace ArrowGame.Data
         private const int ChallengeCycleLengthDays = 7;
         private static readonly DateTime UnixEpochUtc = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         private static readonly DateTime ChallengeEpochUtc = new(2026, 4, 27, 0, 0, 0, DateTimeKind.Utc);
+        private static bool hintCountLoaded;
+        private static int cachedHintCount = DefaultHintCount;
         private static readonly string[] ChallengeRivalNames =
         {
             "Ava", "Noah", "Mira", "Theo", "Ivy", "Owen", "Luna", "Aria",
@@ -71,10 +76,21 @@ namespace ArrowGame.Data
 
         public static int HintCount
         {
-            get => PlayerPrefs.GetInt(HintCountKey, DefaultHintCount);
+            get
+            {
+                if (!hintCountLoaded)
+                {
+                    cachedHintCount = Mathf.Max(0, PlayerPrefs.GetInt(HintCountKey, DefaultHintCount));
+                    hintCountLoaded = true;
+                }
+
+                return cachedHintCount;
+            }
             set
             {
-                PlayerPrefs.SetInt(HintCountKey, Mathf.Max(0, value));
+                cachedHintCount = Mathf.Max(0, value);
+                hintCountLoaded = true;
+                PlayerPrefs.SetInt(HintCountKey, cachedHintCount);
                 PlayerPrefs.Save();
             }
         }
@@ -109,6 +125,16 @@ namespace ArrowGame.Data
             }
         }
 
+        public static bool HasCompletedTutorial
+        {
+            get => PlayerPrefs.GetInt(TutorialCompletedKey, 0) != 0;
+            set
+            {
+                PlayerPrefs.SetInt(TutorialCompletedKey, value ? 1 : 0);
+                PlayerPrefs.Save();
+            }
+        }
+
         public static bool TryConsumeHint()
         {
             if (HintCount <= 0)
@@ -116,6 +142,11 @@ namespace ArrowGame.Data
 
             HintCount--;
             return true;
+        }
+
+        public static void MarkTutorialCompleted()
+        {
+            HasCompletedTutorial = true;
         }
 
         public static int GetCurrentChallengeCycleIndex(DateTime utcNow)
@@ -155,6 +186,23 @@ namespace ArrowGame.Data
             return !HasPlayedChallengeToday(utcNow);
         }
 
+        public static bool HasPendingChallengeRetry(DateTime utcNow)
+        {
+            return PlayerPrefs.GetInt(ChallengePendingRetryUtcDayKey, int.MinValue) == GetUtcDayNumber(utcNow);
+        }
+
+        public static bool CanEnterChallengeSession(DateTime utcNow)
+        {
+            return CanPlayChallengeToday(utcNow) || HasPendingChallengeRetry(utcNow);
+        }
+
+        public static bool CanUseChallengeRetry(DateTime utcNow)
+        {
+            int utcDayNumber = GetUtcDayNumber(utcNow);
+            bool retryAlreadyUsedToday = PlayerPrefs.GetInt(ChallengeRetryUsedUtcDayKey, int.MinValue) == utcDayNumber;
+            return HasPlayedChallengeToday(utcNow) && !HasPendingChallengeRetry(utcNow) && !retryAlreadyUsedToday;
+        }
+
         public static int GetChallengeChancesRemainingToday(DateTime utcNow)
         {
             return CanPlayChallengeToday(utcNow) ? 1 : 0;
@@ -178,6 +226,25 @@ namespace ArrowGame.Data
             streakMask |= 1 << dayIndex;
             PlayerPrefs.SetInt(GetChallengeStreakMaskKey(cycleIndex), streakMask);
             PlayerPrefs.Save();
+        }
+
+        public static void PrepareChallengeRetry(DateTime utcNow)
+        {
+            DateTime utcDateTime = utcNow.ToUniversalTime();
+            int utcDayNumber = GetUtcDayNumber(utcDateTime);
+            PlayerPrefs.SetInt(ChallengeRetryUsedUtcDayKey, utcDayNumber);
+            PlayerPrefs.SetInt(ChallengePendingRetryUtcDayKey, utcDayNumber);
+            PlayerPrefs.Save();
+        }
+
+        public static bool ConsumePendingChallengeRetry(DateTime utcNow)
+        {
+            if (!HasPendingChallengeRetry(utcNow))
+                return false;
+
+            PlayerPrefs.DeleteKey(ChallengePendingRetryUtcDayKey);
+            PlayerPrefs.Save();
+            return true;
         }
 
         public static int GetChallengeStreakMask(DateTime utcNow)

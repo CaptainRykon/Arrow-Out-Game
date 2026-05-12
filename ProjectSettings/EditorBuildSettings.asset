@@ -9,6 +9,9 @@ EditorBuildSettings:
     path: Assets/Scenes/MenuScene.unity
     guid: 5cb3907ce65b4ae0ae5debd0d1d0f220
   - enabled: 1
+    path: Assets/Scenes/TutorialScene.unity
+    guid: 9366f3b9cc344d8fae25d896bf91f333
+  - enabled: 1
     path: Assets/Scenes/ArrowGame.unity
     guid: 53d000561716bf7419b32c8ddc312f44
   - enabled: 1
