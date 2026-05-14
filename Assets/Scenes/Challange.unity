@@ -911,7 +911,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 0, y: -252}
+  m_AnchoredPosition: {x: 0, y: -178.21}
   m_SizeDelta: {x: 363.1, y: 117.7}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &73307691
@@ -7094,7 +7094,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: -2.500122, y: -0.00021076202}
+  m_AnchoredPosition: {x: -2.500122, y: -0.00021362305}
   m_SizeDelta: {x: 5, y: -0.00058556}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &616840457
@@ -11214,7 +11214,7 @@ MonoBehaviour:
   boardGrowthStep: 2
   cameraBoardPadding: 3.5
   minimumCameraSize: 18
-  pinchZoomSpeed: 0.02
+  pinchZoomSpeed: 0.026
   minZoomRatio: 0.7
   maxZoomRatio: 1.35
   maxZoomVisibleGridRows: 20
@@ -11232,6 +11232,9 @@ MonoBehaviour:
   challengeLoseRetryButtonPosition: {x: -120, y: -250}
   challengeLoseMainMenuButtonPosition: {x: 120, y: -250}
   challengeLoseButtonSize: {x: 260, y: 84}
+  tutorialAdvanceDelay: 0.4
+  tutorialHeaderFontSize: 28
+  pinchTapBlockDuration: 0.18
   guideToggleButton: {fileID: 2138633003}
   guideButtonOffColor: {r: 0.33, g: 0.35, b: 0.51, a: 0.92}
   guideButtonOnColor: {r: 0.54, g: 0.63, b: 1, a: 0.96}
@@ -12570,10 +12573,10 @@ RectTransform:
   - {fileID: 742990512}
   m_Father: {fileID: 1864046581}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 699}
-  m_SizeDelta: {x: 826.29, y: 25.019}
+  m_AnchorMin: {x: 0.5, y: 1}
+  m_AnchorMax: {x: 0.5, y: 1}
+  m_AnchoredPosition: {x: 0, y: -260.4}
+  m_SizeDelta: {x: 826.29, y: 25.019043}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1124474108
 MonoBehaviour:

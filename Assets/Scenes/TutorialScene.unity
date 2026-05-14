@@ -2482,7 +2482,7 @@ MonoBehaviour:
   boardGrowthStep: 2
   cameraBoardPadding: 3.5
   minimumCameraSize: 18
-  pinchZoomSpeed: 0.02
+  pinchZoomSpeed: 0.026
   minZoomRatio: 0.7
   maxZoomRatio: 1.35
   maxZoomVisibleGridRows: 20

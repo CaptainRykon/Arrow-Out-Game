@@ -61,6 +61,7 @@ namespace ArrowGame
         private void Start()
         {
             StartChallengeFlow();
+            MiniPayBridge.Instance.RequestChallengeLeaderboard(GetCurrentPatternName(DateTime.UtcNow), leaderboardEntryViews != null ? leaderboardEntryViews.Length : 10);
         }
 
         private void OnEnable()
@@ -71,6 +72,8 @@ namespace ArrowGame
                 arrowGameManager.ChallengeFailed += HandleChallengeFailed;
                 arrowGameManager.SetExternalInputLock(true);
             }
+
+            GameDataStore.ChallengeLeaderboardChanged += HandleChallengeLeaderboardChanged;
         }
 
         private void OnDisable()
@@ -80,6 +83,8 @@ namespace ArrowGame
                 arrowGameManager.ChallengeCompleted -= HandleChallengeCompleted;
                 arrowGameManager.ChallengeFailed -= HandleChallengeFailed;
             }
+
+            GameDataStore.ChallengeLeaderboardChanged -= HandleChallengeLeaderboardChanged;
         }
 
         private void Update()
@@ -118,12 +123,14 @@ namespace ArrowGame
                 return;
 
             GameDataStore.SubmitChallengeResult(pendingCompletionSeconds, DateTime.UtcNow);
+            MiniPayBridge.Instance.SubmitChallengeResult(pendingCompletionSeconds, GetCurrentPatternName(DateTime.UtcNow));
             hasPendingScoreSubmission = false;
 
             if (submitScoreButton != null)
                 submitScoreButton.interactable = false;
 
             RefreshLeaderboardUi();
+            MiniPayBridge.Instance.RequestChallengeLeaderboard(GetCurrentPatternName(DateTime.UtcNow), leaderboardEntryViews != null ? leaderboardEntryViews.Length : 10);
         }
 
         private IEnumerator StartChallengeFlowCO()
@@ -233,8 +240,8 @@ namespace ArrowGame
 
         private void WireButtons()
         {
-            RegisterButton(submitScoreButton, SubmitPendingScore);
-            RegisterButton(leaderboardMainMenuButton, ReturnToMenu);
+            ButtonBindingUtility.BindAction(submitScoreButton, SubmitPendingScore);
+            ButtonBindingUtility.BindAction(leaderboardMainMenuButton, ReturnToMenu);
         }
 
         private void PrepareInitialPanels()
@@ -270,13 +277,10 @@ namespace ArrowGame
 
             DateTime nowUtc = DateTime.UtcNow;
             int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
-            List<ChallengeLeaderboardEntryData> entries = GameDataStore.BuildLocalChallengeLeaderboard(nowUtc, Mathf.Max(leaderboardViewCount, 6));
+            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(nowUtc, Mathf.Max(leaderboardViewCount, 6));
             float playerBestTime = GameDataStore.GetChallengeBestTimeSeconds(nowUtc);
             int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
-            string patternName = challengePatternNames.Length > 0
-                ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
-                : $"Pattern {cycleIndex + 1}";
+            string patternName = GetCurrentPatternName(nowUtc);
 
             if (leaderboardTitleText != null)
                 leaderboardTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1} - {patternName}";
@@ -297,6 +301,20 @@ namespace ArrowGame
                 if (leaderboardEntryViews[i] != null)
                     leaderboardEntryViews[i].Bind(entryData);
             }
+        }
+
+        private void HandleChallengeLeaderboardChanged()
+        {
+            RefreshLeaderboardUi();
+        }
+
+        private string GetCurrentPatternName(DateTime nowUtc)
+        {
+            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
+            return challengePatternNames.Length > 0
+                ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
+                : $"Pattern {cycleIndex + 1}";
         }
 
         private static string FormatTime(float seconds)
@@ -320,14 +338,6 @@ namespace ArrowGame
             ThemeManager.ApplyThemeToScene(gameObject.scene);
         }
 
-        private static void RegisterButton(Button button, Action action)
-        {
-            if (button == null || action == null)
-                return;
-
-            button.onClick.RemoveAllListeners();
-            button.onClick.AddListener(() => action.Invoke());
-        }
     }
 }
 

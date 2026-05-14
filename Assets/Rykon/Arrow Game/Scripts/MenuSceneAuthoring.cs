@@ -66,6 +66,7 @@ namespace ArrowGame
             if (Application.isPlaying)
                 return;
 
+            EnsureHomeShopUi();
             EnsureChallengeUi();
             EnsureSettingsUi();
         }
@@ -73,8 +74,48 @@ namespace ArrowGame
         [ContextMenu("Rebuild Menu Hierarchy")]
         public void RebuildMenuHierarchy()
         {
+            EnsureHomeShopUi(forceRebuild: true);
             EnsureChallengeUi(forceRebuild: true);
             EnsureSettingsUi(forceRebuild: true);
+        }
+
+        private void EnsureHomeShopUi(bool forceRebuild = false)
+        {
+            MenuSceneController controller = GetComponent<MenuSceneController>();
+            if (controller == null)
+                return;
+
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            if (canvas == null)
+                return;
+
+            EnsureEventSystem();
+
+            Transform homePanel = FindDeepChild(canvas.transform, "Home Panel");
+            if (homePanel == null)
+                return;
+
+            Transform shopButton = FindDeepChild(homePanel, "Shop Button");
+            if (forceRebuild && shopButton != null)
+                DestroyEditorSafe(shopButton.gameObject);
+
+            if (shopButton == null)
+                BuildHomeShopButton(homePanel);
+
+            Transform shopPanel = FindDeepChild(canvas.transform, "Shop Panel");
+            if (forceRebuild || NeedsShopUiRebuild(shopPanel))
+            {
+                if (shopPanel != null)
+                    DestroyEditorSafe(shopPanel.gameObject);
+
+                BuildShopPanel(canvas.transform);
+            }
+
+#if UNITY_EDITOR
+            UnityEditor.EditorUtility.SetDirty(controller);
+            if (controller.gameObject.scene.IsValid())
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(controller.gameObject.scene);
+#endif
         }
 
         private void EnsureChallengeUi(bool forceRebuild = false)
@@ -178,6 +219,150 @@ namespace ArrowGame
                    FindDeepChild(challengeMenuPanel, "Status Text") == null ||
                    FindDeepChild(challengeMenuPanel, "Streak Button") == null ||
                    FindDeepChild(challengeMenuPanel, "Play Challenge Button") == null;
+        }
+
+        private static bool NeedsShopUiRebuild(Transform shopPanel)
+        {
+            return shopPanel == null ||
+                   FindDeepChild(shopPanel, "Shop Card") == null ||
+                   FindDeepChild(shopPanel, "Shop Header") == null ||
+                   FindDeepChild(shopPanel, "Shop Close Button") == null ||
+                   FindDeepChild(shopPanel, "Hint Offer Card") == null ||
+                   FindDeepChild(shopPanel, "Lives Offer Card") == null ||
+                   FindDeepChild(shopPanel, "Hint Buy Button") == null ||
+                   FindDeepChild(shopPanel, "Lives Buy Button") == null;
+        }
+
+        private void BuildHomeShopButton(Transform homePanel)
+        {
+            Transform playButton = FindDeepChild(homePanel, "Play Button");
+            RectTransform playRect = playButton as RectTransform;
+            RectTransform buttonRect = CreateRect("Shop Button", homePanel);
+            buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
+            buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
+            buttonRect.pivot = new Vector2(0.5f, 0.5f);
+            buttonRect.sizeDelta = playRect != null && playRect.rect.size.sqrMagnitude > 0.01f
+                ? playRect.rect.size
+                : new Vector2(925f, 120f);
+            buttonRect.anchoredPosition = playRect != null
+                ? playRect.anchoredPosition + new Vector2(0f, -(buttonRect.sizeDelta.y + 44f))
+                : new Vector2(0f, -220f);
+
+            LayoutElement layout = buttonRect.gameObject.AddComponent<LayoutElement>();
+            layout.ignoreLayout = true;
+            layout.flexibleWidth = 1f;
+            layout.preferredHeight = buttonRect.sizeDelta.y;
+            layout.preferredWidth = buttonRect.sizeDelta.x;
+
+            Image image = EnsureImage(buttonRect.gameObject, new Color(0.95f, 0.68f, 0.15f, 1f), Image.Type.Sliced);
+            Button button = buttonRect.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+
+            RectTransform shineRect = CreateRect("Top Shine", buttonRect);
+            shineRect.anchorMin = new Vector2(0.08f, 0.56f);
+            shineRect.anchorMax = new Vector2(0.92f, 0.88f);
+            shineRect.offsetMin = Vector2.zero;
+            shineRect.offsetMax = Vector2.zero;
+            EnsureImage(shineRect.gameObject, new Color(1f, 0.9f, 0.55f, 0.45f), Image.Type.Sliced);
+
+            CreateNamedLabel(buttonRect, "Label", "Shop", 34f, textPrimaryColor);
+            buttonRect.SetAsLastSibling();
+        }
+
+        private void BuildShopPanel(Transform canvasRoot)
+        {
+            RectTransform overlay = CreateRect("Shop Panel", canvasRoot);
+            StretchRect(overlay);
+            EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.76f));
+            overlay.gameObject.SetActive(false);
+
+            RectTransform card = CreateRect("Shop Card", overlay);
+            card.anchorMin = new Vector2(0.5f, 0.5f);
+            card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(760f, 980f);
+            card.anchoredPosition = Vector2.zero;
+            EnsureImage(card.gameObject, new Color(0.98f, 0.91f, 0.69f, 1f), Image.Type.Sliced);
+
+            RectTransform header = CreateRect("Shop Header", card);
+            header.anchorMin = new Vector2(0.5f, 1f);
+            header.anchorMax = new Vector2(0.5f, 1f);
+            header.pivot = new Vector2(0.5f, 1f);
+            header.sizeDelta = new Vector2(430f, 120f);
+            header.anchoredPosition = new Vector2(0f, 24f);
+            EnsureImage(header.gameObject, new Color(0.95f, 0.68f, 0.15f, 1f), Image.Type.Sliced);
+            CreateNamedLabel(header, "Shop Title", "SHOP", 54f, Color.white);
+
+            RectTransform closeRect = CreateRect("Shop Close Button", card);
+            closeRect.anchorMin = new Vector2(1f, 1f);
+            closeRect.anchorMax = new Vector2(1f, 1f);
+            closeRect.pivot = new Vector2(0.5f, 0.5f);
+            closeRect.sizeDelta = new Vector2(92f, 92f);
+            closeRect.anchoredPosition = new Vector2(-58f, -52f);
+            Image closeImage = EnsureImage(closeRect.gameObject, new Color(0.28f, 0.76f, 0.95f, 1f), Image.Type.Sliced);
+            Button closeButton = closeRect.gameObject.AddComponent<Button>();
+            closeButton.targetGraphic = closeImage;
+            CreateNamedLabel(closeRect, "Label", "X", 38f, Color.white);
+
+            RectTransform offersRoot = CreateRect("Shop Offers", card);
+            offersRoot.anchorMin = new Vector2(0.5f, 0.5f);
+            offersRoot.anchorMax = new Vector2(0.5f, 0.5f);
+            offersRoot.pivot = new Vector2(0.5f, 0.5f);
+            offersRoot.sizeDelta = new Vector2(620f, 520f);
+            offersRoot.anchoredPosition = new Vector2(0f, -30f);
+
+            VerticalLayoutGroup offersLayout = offersRoot.gameObject.AddComponent<VerticalLayoutGroup>();
+            offersLayout.padding = new RectOffset(0, 0, 0, 0);
+            offersLayout.spacing = 28f;
+            offersLayout.childAlignment = TextAnchor.UpperCenter;
+            offersLayout.childControlWidth = true;
+            offersLayout.childControlHeight = false;
+            offersLayout.childForceExpandWidth = true;
+            offersLayout.childForceExpandHeight = false;
+
+            CreateShopOfferCard(offersRoot, "Hint", "H", "10 Hints", "$0.99");
+            CreateShopOfferCard(offersRoot, "Lives", "L", "3 Lives", "$1.99");
+        }
+
+        private void CreateShopOfferCard(Transform parent, string prefix, string iconLabel, string amountText, string priceText)
+        {
+            RectTransform card = CreateRect($"{prefix} Offer Card", parent);
+            card.sizeDelta = new Vector2(0f, 150f);
+
+            LayoutElement layout = card.gameObject.AddComponent<LayoutElement>();
+            layout.preferredHeight = 150f;
+            layout.flexibleWidth = 1f;
+
+            EnsureImage(card.gameObject, new Color(1f, 0.96f, 0.8f, 1f), Image.Type.Sliced);
+
+            HorizontalLayoutGroup rowLayout = card.gameObject.AddComponent<HorizontalLayoutGroup>();
+            rowLayout.padding = new RectOffset(28, 28, 20, 20);
+            rowLayout.spacing = 20f;
+            rowLayout.childAlignment = TextAnchor.MiddleCenter;
+            rowLayout.childControlWidth = false;
+            rowLayout.childControlHeight = true;
+            rowLayout.childForceExpandWidth = false;
+            rowLayout.childForceExpandHeight = false;
+
+            RectTransform iconRect = CreateRect($"{prefix} Icon", card);
+            iconRect.sizeDelta = new Vector2(94f, 94f);
+            EnsureImage(iconRect.gameObject, new Color(0.36f, 0.86f, 0.92f, 1f), Image.Type.Sliced);
+            CreateNamedLabel(iconRect, "Icon Label", iconLabel, 28f, Color.white);
+
+            RectTransform amountRect = CreateRect($"{prefix} Amount Text", card);
+            amountRect.sizeDelta = new Vector2(220f, 70f);
+            CreateRectLabel(amountRect, amountText, 34f, new Color(0.35f, 0.28f, 0.16f, 1f), TextAlignmentOptions.Center);
+
+            RectTransform spacer = CreateRect($"{prefix} Spacer", card);
+            LayoutElement spacerLayout = spacer.gameObject.AddComponent<LayoutElement>();
+            spacerLayout.flexibleWidth = 1f;
+
+            RectTransform buyRect = CreateRect($"{prefix} Buy Button", card);
+            buyRect.sizeDelta = new Vector2(210f, 74f);
+            Image buyImage = EnsureImage(buyRect.gameObject, new Color(0.95f, 0.23f, 0.61f, 1f), Image.Type.Sliced);
+            Button buyButton = buyRect.gameObject.AddComponent<Button>();
+            buyButton.targetGraphic = buyImage;
+            CreateNamedLabel(buyRect, $"{prefix} Price Text", priceText, 28f, Color.white);
         }
 
         private void BuildChallengeMenuPanel(Transform challengePanel)
@@ -444,63 +629,45 @@ namespace ArrowGame
         private static void AssignChallengeReferences(MenuSceneController controller, ChallengeMenuReferences refs)
         {
             UnityEditor.SerializedObject so = new(controller);
-            Assign(so, "challengeTitleText", refs.titleText);
-            Assign(so, "challengePatternText", refs.patternNameText);
-            Assign(so, "challengeCycleTimerText", refs.cycleTimerText);
-            Assign(so, "challengeChanceText", refs.chanceText);
-            Assign(so, "challengeNextChanceTimerText", refs.nextChanceTimerText);
-            Assign(so, "challengeStatusText", refs.statusText);
-            Assign(so, "streakButton", refs.streakButton);
-            Assign(so, "challengePlayButton", refs.challengePlayButton);
-            Assign(so, "streakPanel", refs.streakPanel);
-            Assign(so, "closeStreakButton", refs.closeStreakButton);
-            Assign(so, "streakHeadlineText", refs.streakHeadlineText);
-            Assign(so, "streakSummaryText", refs.streakSummaryText);
-            AssignArray(so, "streakDayViews", refs.streakDayViews);
+            SerializedReferenceUtility.Assign(so, "challengeTitleText", refs.titleText);
+            SerializedReferenceUtility.Assign(so, "challengePatternText", refs.patternNameText);
+            SerializedReferenceUtility.Assign(so, "challengeCycleTimerText", refs.cycleTimerText);
+            SerializedReferenceUtility.Assign(so, "challengeChanceText", refs.chanceText);
+            SerializedReferenceUtility.Assign(so, "challengeNextChanceTimerText", refs.nextChanceTimerText);
+            SerializedReferenceUtility.Assign(so, "challengeStatusText", refs.statusText);
+            SerializedReferenceUtility.Assign(so, "streakButton", refs.streakButton);
+            SerializedReferenceUtility.Assign(so, "challengePlayButton", refs.challengePlayButton);
+            SerializedReferenceUtility.Assign(so, "streakPanel", refs.streakPanel);
+            SerializedReferenceUtility.Assign(so, "closeStreakButton", refs.closeStreakButton);
+            SerializedReferenceUtility.Assign(so, "streakHeadlineText", refs.streakHeadlineText);
+            SerializedReferenceUtility.Assign(so, "streakSummaryText", refs.streakSummaryText);
+            SerializedReferenceUtility.AssignArray(so, "streakDayViews", refs.streakDayViews);
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void AssignSettingsReferences(MenuSceneController controller, SettingsMenuReferences refs)
         {
             UnityEditor.SerializedObject so = new(controller);
-            Assign(so, "userNameInputField", refs.userNameInputField);
-            Assign(so, "vibrationToggleButton", refs.vibrationToggleButton);
-            Assign(so, "vibrationToggleBackground", refs.vibrationToggleBackground);
-            Assign(so, "vibrationToggleKnob", refs.vibrationToggleKnob);
-            Assign(so, "soundToggleButton", refs.soundToggleButton);
-            Assign(so, "soundToggleBackground", refs.soundToggleBackground);
-            Assign(so, "soundToggleKnob", refs.soundToggleKnob);
-            Assign(so, "darkModeToggleButton", refs.darkModeToggleButton);
-            Assign(so, "darkModeToggleBackground", refs.darkModeToggleBackground);
-            Assign(so, "darkModeToggleKnob", refs.darkModeToggleKnob);
-            Assign(so, "privacyButton", refs.privacyButton);
-            Assign(so, "termsButton", refs.termsButton);
-            Assign(so, "faqButton", refs.faqButton);
-            Assign(so, "telegramButton", refs.telegramButton);
-            Assign(so, "twitterButton", refs.twitterButton);
-            AssignArray(so, "themeSurfaceImages", refs.themeSurfaceImages);
-            AssignArray(so, "themeAccentImages", refs.themeAccentImages);
-            AssignArray(so, "themePrimaryTexts", refs.themePrimaryTexts);
-            AssignArray(so, "themeSecondaryTexts", refs.themeSecondaryTexts);
+            SerializedReferenceUtility.Assign(so, "userNameInputField", refs.userNameInputField);
+            SerializedReferenceUtility.Assign(so, "vibrationToggleButton", refs.vibrationToggleButton);
+            SerializedReferenceUtility.Assign(so, "vibrationToggleBackground", refs.vibrationToggleBackground);
+            SerializedReferenceUtility.Assign(so, "vibrationToggleKnob", refs.vibrationToggleKnob);
+            SerializedReferenceUtility.Assign(so, "soundToggleButton", refs.soundToggleButton);
+            SerializedReferenceUtility.Assign(so, "soundToggleBackground", refs.soundToggleBackground);
+            SerializedReferenceUtility.Assign(so, "soundToggleKnob", refs.soundToggleKnob);
+            SerializedReferenceUtility.Assign(so, "darkModeToggleButton", refs.darkModeToggleButton);
+            SerializedReferenceUtility.Assign(so, "darkModeToggleBackground", refs.darkModeToggleBackground);
+            SerializedReferenceUtility.Assign(so, "darkModeToggleKnob", refs.darkModeToggleKnob);
+            SerializedReferenceUtility.Assign(so, "privacyButton", refs.privacyButton);
+            SerializedReferenceUtility.Assign(so, "termsButton", refs.termsButton);
+            SerializedReferenceUtility.Assign(so, "faqButton", refs.faqButton);
+            SerializedReferenceUtility.Assign(so, "telegramButton", refs.telegramButton);
+            SerializedReferenceUtility.Assign(so, "twitterButton", refs.twitterButton);
+            SerializedReferenceUtility.AssignArray(so, "themeSurfaceImages", refs.themeSurfaceImages);
+            SerializedReferenceUtility.AssignArray(so, "themeAccentImages", refs.themeAccentImages);
+            SerializedReferenceUtility.AssignArray(so, "themePrimaryTexts", refs.themePrimaryTexts);
+            SerializedReferenceUtility.AssignArray(so, "themeSecondaryTexts", refs.themeSecondaryTexts);
             so.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        private static void Assign(UnityEditor.SerializedObject so, string propertyName, Object value)
-        {
-            UnityEditor.SerializedProperty property = so.FindProperty(propertyName);
-            if (property != null)
-                property.objectReferenceValue = value;
-        }
-
-        private static void AssignArray(UnityEditor.SerializedObject so, string propertyName, Object[] values)
-        {
-            UnityEditor.SerializedProperty property = so.FindProperty(propertyName);
-            if (property == null || !property.isArray)
-                return;
-
-            property.arraySize = values != null ? values.Length : 0;
-            for (int i = 0; i < property.arraySize; i++)
-                property.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
         }
 #endif
 
@@ -702,11 +869,11 @@ namespace ArrowGame
         {
 #if UNITY_EDITOR
             UnityEditor.SerializedObject so = new(view);
-            Assign(so, "background", background);
-            Assign(so, "dayLabel", dayLabel);
-            Assign(so, "stateLabel", stateLabel);
-            Assign(so, "playedMarker", playedMarker);
-            Assign(so, "currentMarker", currentMarker);
+            SerializedReferenceUtility.Assign(so, "background", background);
+            SerializedReferenceUtility.Assign(so, "dayLabel", dayLabel);
+            SerializedReferenceUtility.Assign(so, "stateLabel", stateLabel);
+            SerializedReferenceUtility.Assign(so, "playedMarker", playedMarker);
+            SerializedReferenceUtility.Assign(so, "currentMarker", currentMarker);
             so.ApplyModifiedPropertiesWithoutUndo();
 #endif
         }
@@ -903,4 +1070,5 @@ namespace ArrowGame
                 list.Add(value);
         }
     }
+
 }

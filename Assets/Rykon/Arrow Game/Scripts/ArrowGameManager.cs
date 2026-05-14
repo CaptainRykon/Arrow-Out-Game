@@ -75,7 +75,7 @@ namespace ArrowGame
         [SerializeField] private int boardGrowthStep = 2;
         [SerializeField] private float cameraBoardPadding = 3.5f;
         [SerializeField] private float minimumCameraSize = 18f;
-        [SerializeField] private float pinchZoomSpeed = 0.02f;
+        [SerializeField] private float pinchZoomSpeed = 0.026f;
         [SerializeField] private float minZoomRatio = 0.7f;
         [SerializeField] private float maxZoomRatio = 1.35f;
         [SerializeField] private int maxZoomVisibleGridRows = 20;
@@ -95,6 +95,13 @@ namespace ArrowGame
         [SerializeField] private Vector2 challengeLoseButtonSize = new(260f, 84f);
         [SerializeField] private float tutorialAdvanceDelay = 0.4f;
         [SerializeField] private float tutorialHeaderFontSize = 28f;
+        [SerializeField] private float pinchTapBlockDuration = 0.18f;
+        [SerializeField] private int initialVisibleGridRows = 25;
+        [SerializeField] private int initialVisibleGridColumns = 25;
+        [SerializeField] private float initialGridZoomCellPadding = 1.2f;
+        [SerializeField] private float initialGridZoomDuration = 0.4f;
+        [SerializeField] private float panSensitivity = 1.15f;
+        [SerializeField] private float panSmoothTime = 0.08f;
 
         [Header("Guide Toggle")]
         [SerializeField] private Button guideToggleButton;
@@ -138,11 +145,15 @@ namespace ArrowGame
         private bool hasStartedGameplayIntro;
         private bool hasChallengeSceneController;
         private int currentTutorialStep;
+        private float touchTapBlockedUntilTime;
+        private Vector3 targetCameraPanPosition;
+        private Vector3 cameraPanVelocity;
+        private bool hasTargetCameraPanPosition;
 
         public event UnityAction ChallengeCompleted;
         public event UnityAction ChallengeFailed;
 
-        public bool CanProcessTouchTap => Input.touchCount == 1 && !hasDraggedCurrentTouch;
+        public bool CanProcessTouchTap => Input.touchCount == 1 && !hasDraggedCurrentTouch && !IsTouchTapBlocked();
         public bool HasDraggedCurrentTouch => hasDraggedCurrentTouch;
         public bool IsInputLocked => externalInputLocked || isTransitioningToWin || isLevelIntroPlaying || isQuitPanelVisible || loseUI.activeSelf || winUI.activeSelf;
         public GameplayMode CurrentGameplayMode => gameplayMode;
@@ -358,8 +369,7 @@ namespace ArrowGame
             if (quitConfirmationPanelRect == null)
                 return;
 
-            HideNoHintsPanel(false);
-            SetHintVisible(false);
+            HideHintUi();
             ShowQuitPanel(true);
         }
 
@@ -375,9 +385,7 @@ namespace ArrowGame
 
         private void GameOver()
         {
-            SetHintVisible(false, false);
-            HideNoHintsPanel(false);
-            ShowQuitPanel(false, false);
+            HideTransientGameplayUi();
             SoundManager.PlayLose();
             loseUI.SetActive(true);
 
@@ -432,9 +440,7 @@ namespace ArrowGame
         {
             isTransitioningToWin = true;
             SetGuideLinesVisible(false);
-            SetHintVisible(false, false);
-            HideNoHintsPanel(false);
-            ShowQuitPanel(false, false);
+            HideTransientGameplayUi();
             hasDraggedCurrentTouch = false;
 
             yield return new WaitForSeconds(winLeadInDelay);
@@ -483,10 +489,10 @@ namespace ArrowGame
 
         private void InitializeGameplayButtons()
         {
-            RegisterButton(restartButton, Retry);
-            RegisterButton(mainMenuButton, OpenQuitConfirmation);
-            RegisterButton(quitConfirmYesButton, ConfirmQuitToMenu);
-            RegisterButton(quitConfirmNoButton, CancelQuitToMenu);
+            ButtonBindingUtility.Bind(restartButton, Retry);
+            ButtonBindingUtility.Bind(mainMenuButton, OpenQuitConfirmation);
+            ButtonBindingUtility.Bind(quitConfirmYesButton, ConfirmQuitToMenu);
+            ButtonBindingUtility.Bind(quitConfirmNoButton, CancelQuitToMenu);
         }
 
         private void InitializeHintButton()
@@ -905,6 +911,7 @@ namespace ArrowGame
             fittedCameraPosition = new Vector3(boardCenter.x, boardCenter.y, mainCamera.transform.position.z);
             mainCamera.transform.position = fittedCameraPosition;
             mainCamera.orthographicSize = fittedCameraSize;
+            SyncCameraPanState(fittedCameraPosition);
         }
 
         private float GetMinimumZoomInCameraSize(Camera mainCamera)
@@ -928,6 +935,65 @@ namespace ArrowGame
                 return 1f;
 
             return Mathf.Max(0.01f, LineGenerator.CurrentRenderCellSpacing);
+        }
+
+        private float GetMaximumCameraSizeForVisibleGrid(Camera mainCamera, int visibleRows, int visibleColumns, float extraPadding)
+        {
+            float aspect = Mathf.Max(0.01f, mainCamera.aspect);
+            float cellSpacing = Mathf.Max(0.01f, GetEffectiveBoardCellSpacing());
+            float rows = Mathf.Max(2, visibleRows) - 1 + extraPadding;
+            float columns = Mathf.Max(2, visibleColumns) - 1 + extraPadding;
+
+            float sizeFromRows = rows * cellSpacing * 0.5f;
+            float sizeFromColumns = columns * cellSpacing * 0.5f / aspect;
+            return Mathf.Max(absoluteMinimumZoomSize, Mathf.Min(sizeFromRows, sizeFromColumns));
+        }
+
+        private bool TryGetInitialPlayableCameraSize(Camera mainCamera, out float targetSize)
+        {
+            targetSize = fittedCameraSize;
+            if (mainCamera == null || !mainCamera.orthographic)
+                return false;
+
+            float boardWidth = boardWorldMax.x - boardWorldMin.x + 1f;
+            float boardHeight = boardWorldMax.y - boardWorldMin.y + 1f;
+            if (boardWidth <= initialVisibleGridColumns && boardHeight <= initialVisibleGridRows)
+                return false;
+
+            float desiredSize = GetMaximumCameraSizeForVisibleGrid(mainCamera, initialVisibleGridRows, initialVisibleGridColumns, initialGridZoomCellPadding);
+            targetSize = Mathf.Clamp(desiredSize, minAllowedCameraSize, fittedCameraSize);
+            return targetSize < fittedCameraSize - 0.01f;
+        }
+
+        private void SyncCameraPanState(Vector3 position)
+        {
+            targetCameraPanPosition = new Vector3(position.x, position.y, fittedCameraPosition.z);
+            cameraPanVelocity = Vector3.zero;
+            hasTargetCameraPanPosition = true;
+        }
+
+        private void SmoothCameraTowardTarget(Camera mainCamera)
+        {
+            if (mainCamera == null)
+                return;
+
+            Vector3 clampedTarget = ClampCameraPosition(mainCamera, targetCameraPanPosition);
+            if (panSmoothTime <= 0f)
+            {
+                mainCamera.transform.position = clampedTarget;
+                cameraPanVelocity = Vector3.zero;
+                return;
+            }
+
+            Vector3 smoothedPosition = Vector3.SmoothDamp(mainCamera.transform.position, clampedTarget, ref cameraPanVelocity, panSmoothTime);
+            smoothedPosition = ClampCameraPosition(mainCamera, smoothedPosition);
+            mainCamera.transform.position = smoothedPosition;
+
+            if ((mainCamera.transform.position - clampedTarget).sqrMagnitude <= 0.0001f)
+            {
+                mainCamera.transform.position = clampedTarget;
+                cameraPanVelocity = Vector3.zero;
+            }
         }
 
         private void RefreshProgress()
@@ -1114,9 +1180,7 @@ namespace ArrowGame
             if (loseUI != null)
                 loseUI.SetActive(false);
 
-            SetHintVisible(false, false);
-            HideNoHintsPanel(false);
-            ShowQuitPanel(false, false);
+            HideTransientGameplayUi();
             SetDamageOverlayVisible(0f);
 
             ConfigureSeedAndBoard(currentTutorialStep + 1);
@@ -1135,6 +1199,28 @@ namespace ArrowGame
         private void ResetHintIdleTimer()
         {
             idleSinceLastRemoval = 0f;
+        }
+
+        private void HideHintUi(bool animateHint = true)
+        {
+            SetHintVisible(false, animateHint);
+            HideNoHintsPanel(false);
+        }
+
+        private void HideTransientGameplayUi(bool animateHint = false, bool animateQuitPanel = false)
+        {
+            HideHintUi(animateHint);
+            ShowQuitPanel(false, animateQuitPanel);
+        }
+
+        private void BlockTouchTapAfterGesture()
+        {
+            touchTapBlockedUntilTime = Mathf.Max(touchTapBlockedUntilTime, Time.unscaledTime + pinchTapBlockDuration);
+        }
+
+        private bool IsTouchTapBlocked()
+        {
+            return Time.unscaledTime < touchTapBlockedUntilTime;
         }
 
         private void UpdateHintButtonVisibility()
@@ -1316,17 +1402,12 @@ namespace ArrowGame
             }
 
             yield return new WaitForSeconds(levelIntroDuration);
+            Camera mainCamera = Camera.main;
+            if (TryGetInitialPlayableCameraSize(mainCamera, out float initialPlayableCameraSize))
+                yield return AnimateCameraToPositionAndSize(fittedCameraPosition, initialPlayableCameraSize, initialGridZoomDuration);
+
             isLevelIntroPlaying = false;
             externalInputLocked = false;
-        }
-
-        private static void RegisterButton(Button button, UnityEngine.Events.UnityAction action)
-        {
-            if (button == null)
-                return;
-
-            button.onClick.RemoveListener(action);
-            button.onClick.AddListener(action);
         }
 
         private void HandlePinchZoom()
@@ -1337,6 +1418,9 @@ namespace ArrowGame
 
             if (Input.touchCount == 2)
             {
+                hasDraggedCurrentTouch = true;
+                BlockTouchTapAfterGesture();
+
                 Touch touchZero = Input.GetTouch(0);
                 Touch touchOne = Input.GetTouch(1);
 
@@ -1351,7 +1435,9 @@ namespace ArrowGame
                 {
                     float targetSize = mainCamera.orthographicSize - distanceDelta * pinchZoomSpeed;
                     mainCamera.orthographicSize = Mathf.Clamp(targetSize, minAllowedCameraSize, maxAllowedCameraSize);
-                    mainCamera.transform.position = ClampCameraPosition(mainCamera, mainCamera.transform.position);
+                    Vector3 clampedPosition = ClampCameraPosition(mainCamera, mainCamera.transform.position);
+                    mainCamera.transform.position = clampedPosition;
+                    SyncCameraPanState(clampedPosition);
                 }
 
                 return;
@@ -1363,7 +1449,9 @@ namespace ArrowGame
             {
                 float scrollTargetSize = mainCamera.orthographicSize - scrollDelta * editorScrollZoomSpeed;
                 mainCamera.orthographicSize = Mathf.Clamp(scrollTargetSize, minAllowedCameraSize, maxAllowedCameraSize);
-                mainCamera.transform.position = ClampCameraPosition(mainCamera, mainCamera.transform.position);
+                Vector3 clampedPosition = ClampCameraPosition(mainCamera, mainCamera.transform.position);
+                mainCamera.transform.position = clampedPosition;
+                SyncCameraPanState(clampedPosition);
             }
 #endif
         }
@@ -1374,6 +1462,9 @@ namespace ArrowGame
             if (mainCamera == null || !mainCamera.orthographic)
                 return;
 
+            if (!hasTargetCameraPanPosition)
+                SyncCameraPanState(mainCamera.transform.position);
+
             if (Input.touchCount == 1)
             {
                 Touch touch = Input.GetTouch(0);
@@ -1381,8 +1472,9 @@ namespace ArrowGame
                 {
                     case TouchPhase.Began:
                         singleTouchStartScreenPosition = touch.position;
-                        singleTouchStartCameraPosition = mainCamera.transform.position;
+                        singleTouchStartCameraPosition = hasTargetCameraPanPosition ? targetCameraPanPosition : mainCamera.transform.position;
                         hasDraggedCurrentTouch = false;
+                        cameraPanVelocity = Vector3.zero;
                         break;
                     case TouchPhase.Moved:
                     case TouchPhase.Stationary:
@@ -1398,9 +1490,10 @@ namespace ArrowGame
 
                         Vector3 worldStart = mainCamera.ScreenToWorldPoint(new Vector3(singleTouchStartScreenPosition.x, singleTouchStartScreenPosition.y, -mainCamera.transform.position.z));
                         Vector3 worldCurrent = mainCamera.ScreenToWorldPoint(new Vector3(touch.position.x, touch.position.y, -mainCamera.transform.position.z));
-                        Vector3 worldDelta = worldStart - worldCurrent;
+                        Vector3 worldDelta = (worldStart - worldCurrent) * Mathf.Max(0.01f, panSensitivity);
                         Vector3 targetPosition = singleTouchStartCameraPosition + new Vector3(worldDelta.x, worldDelta.y, 0f);
-                        mainCamera.transform.position = ClampCameraPosition(mainCamera, targetPosition);
+                        targetCameraPanPosition = ClampCameraPosition(mainCamera, targetPosition);
+                        SmoothCameraTowardTarget(mainCamera);
                         break;
                     case TouchPhase.Ended:
                     case TouchPhase.Canceled:
@@ -1410,7 +1503,16 @@ namespace ArrowGame
                 return;
             }
 
-            hasDraggedCurrentTouch = false;
+            if (CanPan(mainCamera))
+                SmoothCameraTowardTarget(mainCamera);
+            else
+            {
+                SyncCameraPanState(fittedCameraPosition);
+                mainCamera.transform.position = fittedCameraPosition;
+            }
+
+            if (Input.touchCount == 0)
+                hasDraggedCurrentTouch = false;
         }
 
         private bool CanPan(Camera mainCamera)
@@ -1420,13 +1522,10 @@ namespace ArrowGame
 
         private Vector3 ClampCameraPosition(Camera mainCamera, Vector3 targetPosition)
         {
-            float halfHeight = mainCamera.orthographicSize;
-            float halfWidth = mainCamera.aspect * halfHeight;
-
-            float minX = boardWorldMin.x + halfWidth;
-            float maxX = boardWorldMax.x - halfWidth;
-            float minY = boardWorldMin.y + halfHeight;
-            float maxY = boardWorldMax.y - halfHeight;
+            float minX = boardWorldMin.x;
+            float maxX = boardWorldMax.x;
+            float minY = boardWorldMin.y;
+            float maxY = boardWorldMax.y;
 
             float clampedX = minX > maxX ? fittedCameraPosition.x : Mathf.Clamp(targetPosition.x, minX, maxX);
             float clampedY = minY > maxY ? fittedCameraPosition.y : Mathf.Clamp(targetPosition.y, minY, maxY);
@@ -1464,26 +1563,42 @@ namespace ArrowGame
 
         private IEnumerator AnimateCameraToFittedView()
         {
+            yield return AnimateCameraToPositionAndSize(fittedCameraPosition, fittedCameraSize, winCameraResetDuration);
+        }
+
+        private IEnumerator AnimateCameraToPositionAndSize(Vector3 targetPosition, float targetSize, float duration)
+        {
             Camera mainCamera = Camera.main;
             if (mainCamera == null || !mainCamera.orthographic)
                 yield break;
 
             Vector3 startPosition = mainCamera.transform.position;
             float startSize = mainCamera.orthographicSize;
+            Vector3 clampedTargetPosition = ClampCameraPosition(mainCamera, targetPosition);
+
+            if (duration <= 0f)
+            {
+                mainCamera.transform.position = clampedTargetPosition;
+                mainCamera.orthographicSize = targetSize;
+                SyncCameraPanState(clampedTargetPosition);
+                yield break;
+            }
+
             float elapsed = 0f;
 
-            while (elapsed < winCameraResetDuration)
+            while (elapsed < duration)
             {
                 elapsed += Time.deltaTime;
-                float t = Mathf.Clamp01(elapsed / winCameraResetDuration);
+                float t = Mathf.Clamp01(elapsed / duration);
                 float easedT = 1f - Mathf.Pow(1f - t, 3f);
-                mainCamera.transform.position = Vector3.Lerp(startPosition, fittedCameraPosition, easedT);
-                mainCamera.orthographicSize = Mathf.Lerp(startSize, fittedCameraSize, easedT);
+                mainCamera.transform.position = Vector3.Lerp(startPosition, clampedTargetPosition, easedT);
+                mainCamera.orthographicSize = Mathf.Lerp(startSize, targetSize, easedT);
                 yield return null;
             }
 
-            mainCamera.transform.position = fittedCameraPosition;
-            mainCamera.orthographicSize = fittedCameraSize;
+            mainCamera.transform.position = clampedTargetPosition;
+            mainCamera.orthographicSize = targetSize;
+            SyncCameraPanState(clampedTargetPosition);
         }
     }
 }

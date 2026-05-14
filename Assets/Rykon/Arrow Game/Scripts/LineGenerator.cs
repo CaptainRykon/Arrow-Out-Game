@@ -1501,10 +1501,12 @@ namespace ArrowGame
         private void CreateDots(bool[,] activeMask)
         {
             List<Vector2Int> cells = GetActiveCells(activeMask);
-            float effectiveDotSize = playableMask != null ? dotSize * challengeDotScaleMultiplier : dotSize;
+            float effectiveDotSize = playableMask != null
+                ? dotSize * Mathf.Max(challengeDotScaleMultiplier, 0.65f)
+                : dotSize;
             Color effectiveDotColor = dotColor;
             if (playableMask != null)
-                effectiveDotColor.a *= challengeDotAlphaMultiplier;
+                effectiveDotColor.a = Mathf.Max(dotColor.a * challengeDotAlphaMultiplier, 0.24f);
 
             for (int i = 0; i < cells.Count; i++)
             {

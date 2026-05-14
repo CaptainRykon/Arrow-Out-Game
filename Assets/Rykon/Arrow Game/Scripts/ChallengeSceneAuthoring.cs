@@ -182,44 +182,26 @@ namespace ArrowGame
         {
 #if UNITY_EDITOR
             UnityEditor.SerializedObject serializedObject = new(controller);
-            Assign(serializedObject, "arrowGameManager", gameManager);
-            Assign(serializedObject, "loadingPanel", refs.loadingPanel);
-            Assign(serializedObject, "loadingStatusText", refs.loadingStatusText);
-            Assign(serializedObject, "loadingProgressFill", refs.loadingProgressFill);
-            Assign(serializedObject, "countdownPanel", refs.countdownPanel);
-            Assign(serializedObject, "countdownText", refs.countdownText);
-            Assign(serializedObject, "challengeHudPanel", refs.challengeHudPanel);
-            Assign(serializedObject, "runTimerText", refs.runTimerText);
-            Assign(serializedObject, "leaderboardPanel", refs.leaderboardPanel);
-            Assign(serializedObject, "leaderboardTitleText", refs.leaderboardTitleText);
-            Assign(serializedObject, "leaderboardPlayerBestText", refs.leaderboardPlayerBestText);
-            Assign(serializedObject, "finalScoreText", refs.finalScoreText);
-            Assign(serializedObject, "submitScoreButton", refs.submitScoreButton);
-            Assign(serializedObject, "leaderboardMainMenuButton", refs.leaderboardMainMenuButton);
-            AssignArray(serializedObject, "leaderboardEntryViews", refs.leaderboardEntryViews);
+            SerializedReferenceUtility.Assign(serializedObject, "arrowGameManager", gameManager);
+            SerializedReferenceUtility.Assign(serializedObject, "loadingPanel", refs.loadingPanel);
+            SerializedReferenceUtility.Assign(serializedObject, "loadingStatusText", refs.loadingStatusText);
+            SerializedReferenceUtility.Assign(serializedObject, "loadingProgressFill", refs.loadingProgressFill);
+            SerializedReferenceUtility.Assign(serializedObject, "countdownPanel", refs.countdownPanel);
+            SerializedReferenceUtility.Assign(serializedObject, "countdownText", refs.countdownText);
+            SerializedReferenceUtility.Assign(serializedObject, "challengeHudPanel", refs.challengeHudPanel);
+            SerializedReferenceUtility.Assign(serializedObject, "runTimerText", refs.runTimerText);
+            SerializedReferenceUtility.Assign(serializedObject, "leaderboardPanel", refs.leaderboardPanel);
+            SerializedReferenceUtility.Assign(serializedObject, "leaderboardTitleText", refs.leaderboardTitleText);
+            SerializedReferenceUtility.Assign(serializedObject, "leaderboardPlayerBestText", refs.leaderboardPlayerBestText);
+            SerializedReferenceUtility.Assign(serializedObject, "finalScoreText", refs.finalScoreText);
+            SerializedReferenceUtility.Assign(serializedObject, "submitScoreButton", refs.submitScoreButton);
+            SerializedReferenceUtility.Assign(serializedObject, "leaderboardMainMenuButton", refs.leaderboardMainMenuButton);
+            SerializedReferenceUtility.AssignArray(serializedObject, "leaderboardEntryViews", refs.leaderboardEntryViews);
             serializedObject.ApplyModifiedPropertiesWithoutUndo();
 #endif
         }
 
 #if UNITY_EDITOR
-        private static void Assign(UnityEditor.SerializedObject serializedObject, string propertyName, Object value)
-        {
-            UnityEditor.SerializedProperty property = serializedObject.FindProperty(propertyName);
-            if (property != null)
-                property.objectReferenceValue = value;
-        }
-
-        private static void AssignArray(UnityEditor.SerializedObject serializedObject, string propertyName, Object[] values)
-        {
-            UnityEditor.SerializedProperty property = serializedObject.FindProperty(propertyName);
-            if (property == null || !property.isArray)
-                return;
-
-            property.arraySize = values != null ? values.Length : 0;
-            for (int i = 0; i < property.arraySize; i++)
-                property.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
-        }
-
         private static void AssignLeaderboardEntryView(
             ChallengeLeaderboardEntryView view,
             GameObject contentRoot,
@@ -232,14 +214,14 @@ namespace ArrowGame
             GameObject thirdBadge)
         {
             UnityEditor.SerializedObject serializedObject = new(view);
-            Assign(serializedObject, "contentRoot", contentRoot);
-            Assign(serializedObject, "background", background);
-            Assign(serializedObject, "rankText", rankText);
-            Assign(serializedObject, "nameText", nameText);
-            Assign(serializedObject, "timeText", timeText);
-            Assign(serializedObject, "firstPlaceBadge", firstBadge);
-            Assign(serializedObject, "secondPlaceBadge", secondBadge);
-            Assign(serializedObject, "thirdPlaceBadge", thirdBadge);
+            SerializedReferenceUtility.Assign(serializedObject, "contentRoot", contentRoot);
+            SerializedReferenceUtility.Assign(serializedObject, "background", background);
+            SerializedReferenceUtility.Assign(serializedObject, "rankText", rankText);
+            SerializedReferenceUtility.Assign(serializedObject, "nameText", nameText);
+            SerializedReferenceUtility.Assign(serializedObject, "timeText", timeText);
+            SerializedReferenceUtility.Assign(serializedObject, "firstPlaceBadge", firstBadge);
+            SerializedReferenceUtility.Assign(serializedObject, "secondPlaceBadge", secondBadge);
+            SerializedReferenceUtility.Assign(serializedObject, "thirdPlaceBadge", thirdBadge);
             serializedObject.ApplyModifiedPropertiesWithoutUndo();
         }
 #endif

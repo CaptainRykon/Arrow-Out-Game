@@ -49,7 +49,7 @@ namespace ArrowGame
             themeBlockedColor = palette.ArrowBlockedColor;
 
             Color = themeBaseColor;
-            moveSpeed = 30f;
+            moveSpeed = 40f;
 
             lineRenderer = GetComponent<LineRenderer>();
             if (lineRenderer == null)
@@ -405,8 +405,8 @@ namespace ArrowGame
             if (!isInputLocked && Input.touchCount == 1)
             {
                 Touch touch = Input.GetTouch(0);
-                bool hasDraggedTouch = ArrowGameManager.Instance != null && ArrowGameManager.Instance.HasDraggedCurrentTouch;
-                bool touchEndedWithoutDrag = touch.phase == TouchPhase.Ended && !hasDraggedTouch;
+                bool canProcessTouchTap = ArrowGameManager.Instance != null && ArrowGameManager.Instance.CanProcessTouchTap;
+                bool touchEndedWithoutDrag = touch.phase == TouchPhase.Ended && canProcessTouchTap;
                 bool touchOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(touch.fingerId);
 
                 if (touchEndedWithoutDrag && !touchOverUI)
