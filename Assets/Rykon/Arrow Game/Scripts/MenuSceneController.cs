@@ -14,6 +14,8 @@ namespace ArrowGame
         private const string GameSceneName = "ArrowGame";
         private const string ChallengeSceneName = "Challange";
         private const string TutorialSceneName = "TutorialScene";
+        private const int LeaderboardEntryLimit = 25;
+        private static readonly string[] DefaultChallengePatternNames = { "Star", "Duck", "Bolt", "Crown", "Leaf", "Rocket", "Moon" };
 
         [Header("Panels")]
         [SerializeField] private GameObject homePanel;
@@ -35,6 +37,7 @@ namespace ArrowGame
         [SerializeField] private Button primaryPlayButton;
         [SerializeField] private Button cardPlayButton;
         [SerializeField] private Button shopButton;
+        [SerializeField] private Button leaderboardButton;
         [SerializeField] private Button challengePlayButton;
         [SerializeField] private TextMeshProUGUI currentLevelLabel;
 
@@ -54,11 +57,11 @@ namespace ArrowGame
         [SerializeField] private TextMeshProUGUI hintPriceText;
         [SerializeField] private TextMeshProUGUI livesAmountText;
         [SerializeField] private TextMeshProUGUI livesPriceText;
-        [SerializeField] private string hintPackageAmountLabel = "10 Hints";
-        [SerializeField] private string hintPackagePriceLabel = "$0.99";
-        [SerializeField] private string livesPackageAmountLabel = "3 Lives";
+        [SerializeField] private string hintPackageAmountLabel = "5 Hints";
+        [SerializeField] private string hintPackagePriceLabel = "$0.10";
+        [SerializeField] private string livesPackageAmountLabel = "3 Revives";
         [SerializeField] private string livesPackagePriceLabel = "$1.99";
-        [SerializeField] private int hintPackageAmount = 10;
+        [SerializeField] private int hintPackageAmount = 5;
         [SerializeField] private int livesPackageAmount = 3;
 
         [Header("Purchase Gate")]
@@ -68,14 +71,56 @@ namespace ArrowGame
         [SerializeField] private TextMeshProUGUI purchaseGateBodyText;
         [SerializeField] private TextMeshProUGUI purchaseGatePriceText;
         [SerializeField] private TextMeshProUGUI purchaseGateStatusText;
-        [SerializeField] private string purchaseGateTitleLabel = "Unlock Arrow Out";
-        [SerializeField] private string purchaseGateBodyLabel = "Finish the tutorial, then pay once in MiniPay to unlock the full game.";
+        [SerializeField] private string purchaseGateTitleLabel = "Enjoying Arrow Out?";
+        [SerializeField] private string purchaseGateBodyLabel = "Unlock the full game with a one-time purchase.Unlimited play 10000+ Levels Leaderboard Rewards";
         [SerializeField] private string purchaseGatePriceLabel = "$0.50";
         [SerializeField] private string purchaseGateIdleStatusLabel = "Complete the payment to continue into the main game.";
         [SerializeField] private float bridgeStartupWaitSeconds = 5f;
 
+        [Header("Purchase Success")]
+        [SerializeField] private GameObject purchaseSuccessPanel;
+        [SerializeField] private TextMeshProUGUI purchaseSuccessTitleText;
+        [SerializeField] private TextMeshProUGUI purchaseSuccessBodyText;
+        [SerializeField] private TMP_InputField purchaseSuccessNameInputField;
+        [SerializeField] private Button purchaseSuccessOkButton;
+        [SerializeField] private TextMeshProUGUI purchaseSuccessStatusText;
+        [SerializeField] private string purchaseSuccessTitleLabel = "Payment Successful";
+        [SerializeField] private string purchaseSuccessBodyLabel = "Welcome to Arrow Out. Enter your player name to continue.";
+        [SerializeField] private string purchaseSuccessStatusLabel = "Your name will be saved to MiniPay.";
+        [SerializeField] private int freeUnlockHintRewardCount =3;
+
+        [Header("Unlock Reward")]
+        [SerializeField] private GameObject hintRewardPanel;
+        [SerializeField] private TextMeshProUGUI hintRewardTitleText;
+        [SerializeField] private TextMeshProUGUI hintRewardBodyText;
+        [SerializeField] private TextMeshProUGUI hintRewardStatusText;
+        [SerializeField] private Button hintRewardOkButton;
+        [SerializeField] private string hintRewardTitleLabel = "Free Hints Unlocked";
+        [SerializeField] private string hintRewardBodyLabel = "Congrats! You received 3 free hints with your unlock purchase.";
+        [SerializeField] private string hintRewardStatusLabel = "These hints are saved to your MiniPay account.";
+        [SerializeField] private string hintPurchaseSuccessTitleLabel = "Hints Added";
+        [SerializeField] private string hintPurchaseSuccessBodyLabel = "Your hint purchase was successful.";
+        [SerializeField] private string hintPurchaseSuccessStatusLabel = "The hints were added to your MiniPay game data.";
+
+        [Header("Payment Failed")]
+        [SerializeField] private GameObject paymentFailedPanel;
+        [SerializeField] private TextMeshProUGUI paymentFailedTitleText;
+        [SerializeField] private TextMeshProUGUI paymentFailedBodyText;
+        [SerializeField] private Button paymentFailedRetryButton;
+        [SerializeField] private string paymentFailedTitleLabel = "Payment Failed";
+        [SerializeField] private string paymentFailedDefaultBodyLabel = "Payment failed. Please try again.";
+
         [Header("Settings")]
         [SerializeField] private TMP_InputField userNameInputField;
+        [SerializeField] private Button userNameEditButton;
+        [SerializeField] private GameObject userNameEditPanel;
+        [SerializeField] private TMP_InputField userNameEditInputField;
+        [SerializeField] private Button userNameEditSaveButton;
+        [SerializeField] private Button userNameEditCancelButton;
+        [SerializeField] private TextMeshProUGUI userNameEditTitleText;
+        [SerializeField] private TextMeshProUGUI userNameEditStatusText;
+        [SerializeField] private string userNameEditTitleLabel = "Change Your Name";
+        [SerializeField] private string userNameEditStatusLabel = "Enter a new name and save it to your MiniPay profile.";
         [SerializeField] private Button vibrationToggleButton;
         [SerializeField] private Image vibrationToggleBackground;
         [SerializeField] private RectTransform vibrationToggleKnob;
@@ -115,20 +160,21 @@ namespace ArrowGame
         [SerializeField] private Vector2 toggleKnobOffPosition = new(-26f, 0f);
 
         [Header("Challenge UI")]
-        [SerializeField] private string challengeTitlePrefix = "Weekly Challenge";
-        [SerializeField] private string[] challengePatternNames = { "Star", "Duck", "Bolt", "Crown", "Leaf", "Rocket", "Moon" };
+        [SerializeField] private string challengeTitlePrefix = "WEEKLY CHALLANGE";
+        [SerializeField] private string[] challengePatternNames = {  };
         [SerializeField] private TextMeshProUGUI challengeTitleText;
         [SerializeField] private TextMeshProUGUI challengePatternText;
         [SerializeField] private TextMeshProUGUI challengeCycleTimerText;
         [SerializeField] private TextMeshProUGUI challengeChanceText;
         [SerializeField] private TextMeshProUGUI challengeNextChanceTimerText;
         [SerializeField] private TextMeshProUGUI challengeStatusText;
-        [SerializeField] private Button streakButton;
-        [SerializeField] private GameObject streakPanel;
-        [SerializeField] private Button closeStreakButton;
-        [SerializeField] private TextMeshProUGUI streakHeadlineText;
-        [SerializeField] private TextMeshProUGUI streakSummaryText;
-        [SerializeField] private ChallengeStreakDayView[] streakDayViews;
+
+        [Header("Menu Leaderboard")]
+        [SerializeField] private GameObject leaderboardPanel;
+        [SerializeField] private Button closeLeaderboardButton;
+        [SerializeField] private TextMeshProUGUI leaderboardTitleText;
+        [SerializeField] private TextMeshProUGUI leaderboardPlayerBestText;
+        [SerializeField] private ChallengeLeaderboardEntryView[] leaderboardEntryViews;
 
         [Header("Colors")]
         [SerializeField] private Color selectedTabColor = new(0.35f, 0.43f, 0.98f, 0.18f);
@@ -141,39 +187,64 @@ namespace ArrowGame
         private Coroutine entryFlowCoroutine;
         private bool purchaseGateBusy;
         private string purchaseGateStatusOverride;
-        private static Sprite runtimeSprite;
+        private bool entryFlowResolved;
+        private bool shouldShowUnlockHintReward;
+        private bool showingHintPurchaseSuccess;
+        private bool isHomeTabSelected;
+        private bool isCollectionTabSelected;
+        private bool isSettingsTabSelected;
+        private bool isHandlingGameDataChange;
+        private bool hasAppliedThemeState;
+        private bool lastAppliedDarkModeEnabled;
 
         private void OnValidate()
         {
             TryAssignSettingsReferencesFromPanel();
             TryAssignShopReferences();
             TryAssignPurchaseGateReferences();
+            TryAssignPurchaseSuccessReferences();
+            TryAssignHintRewardReferences();
+            TryAssignPaymentFailedReferences();
+            TryAssignLeaderboardReferences();
         }
 
         private void Awake()
         {
-            EnsurePurchaseGateUi();
             TryAssignSettingsReferencesFromPanel();
             TryAssignShopReferences();
             TryAssignPurchaseGateReferences();
+            TryAssignPurchaseSuccessReferences();
+            TryAssignHintRewardReferences();
+            TryAssignPaymentFailedReferences();
+            TryAssignLeaderboardReferences();
             WireButtons();
             WireSettingsControls();
-            CloseStreakPanel();
             CloseShopPanel();
             ClosePurchaseGatePanel();
+            ClosePurchaseSuccessPanel();
+            CloseHintRewardPanel();
+            ClosePaymentFailedPanel();
+            CloseLeaderboardPanel();
             RefreshLevelLabel();
             RefreshSettingsUi();
             RefreshShopUi();
             RefreshPurchaseGateUi();
-            ShowHome();
+            RefreshPurchaseSuccessUi();
+            RefreshHintRewardUi();
+            RefreshPaymentFailedUi();
+            RefreshLeaderboardUi();
+            SetTabState(false, false, false);
         }
 
         private void OnEnable()
         {
-            EnsurePurchaseGateUi();
             TryAssignSettingsReferencesFromPanel();
             TryAssignShopReferences();
             TryAssignPurchaseGateReferences();
+            TryAssignPurchaseSuccessReferences();
+            TryAssignHintRewardReferences();
+            TryAssignPaymentFailedReferences();
+            TryAssignLeaderboardReferences();
             WireSettingsControls();
             SubscribeMiniPayEvents();
             nextChallengeUiRefreshTime = 0f;
@@ -182,6 +253,10 @@ namespace ArrowGame
             RefreshSettingsUi();
             RefreshShopUi();
             RefreshPurchaseGateUi();
+            RefreshPurchaseSuccessUi();
+            RefreshHintRewardUi();
+            RefreshPaymentFailedUi();
+            RefreshLeaderboardUi();
         }
 
         private void Start()
@@ -196,8 +271,11 @@ namespace ArrowGame
 
         private void OnDestroy()
         {
-            if (userNameInputField != null)
-                userNameInputField.onEndEdit.RemoveListener(HandleUserNameChanged);
+            if (purchaseSuccessNameInputField != null)
+                purchaseSuccessNameInputField.onValueChanged.RemoveListener(HandlePurchaseSuccessNameChanged);
+
+            if (userNameEditInputField != null)
+                userNameEditInputField.onValueChanged.RemoveListener(HandleUserNameEditChanged);
 
             if (entryFlowCoroutine != null)
                 StopCoroutine(entryFlowCoroutine);
@@ -205,26 +283,41 @@ namespace ArrowGame
 
         public void ShowHome()
         {
+            if (!CanInteractWithMenu())
+                return;
+
+            CloseUserNameEditPanel();
             SetTabState(true, false, false);
         }
 
         public void ShowCollection()
         {
-            CloseStreakPanel();
+            if (!CanInteractWithMenu())
+                return;
+
             CloseShopPanel();
+            CloseLeaderboardPanel();
+            CloseUserNameEditPanel();
             SetTabState(false, true, false);
         }
 
         public void ShowSettings()
         {
-            CloseStreakPanel();
+            if (!CanInteractWithMenu())
+                return;
+
             CloseShopPanel();
+            CloseLeaderboardPanel();
+            CloseUserNameEditPanel();
             RefreshSettingsUi();
             SetTabState(false, false, true);
         }
 
         public void PlayGame()
         {
+            if (!entryFlowResolved)
+                return;
+
             SoundManager.PlayButtonClick();
             HapticManager.PlayButtonTap();
 
@@ -234,11 +327,21 @@ namespace ArrowGame
                 return;
             }
 
-            SceneManager.LoadScene(GameDataStore.HasCompletedTutorial ? GameSceneName : TutorialSceneName);
+            if (!CanDecideTutorialGate())
+            {
+                MiniPayBridge.Instance.RequestBootstrap();
+                BeginEntryFlowResolution();
+                return;
+            }
+
+            SceneManager.LoadScene(ShouldSkipTutorial() ? GameSceneName : TutorialSceneName);
         }
 
         public void PlayChallenge()
         {
+            if (!entryFlowResolved)
+                return;
+
             SoundManager.PlayButtonClick();
             HapticManager.PlayButtonTap();
 
@@ -259,7 +362,7 @@ namespace ArrowGame
 
         public void OpenShopPanel()
         {
-            if (ShouldShowPurchaseGate())
+            if (!CanInteractWithMenu() || ShouldShowPurchaseGate())
             {
                 OpenPurchaseGatePanel();
                 return;
@@ -276,38 +379,78 @@ namespace ArrowGame
                 shopPanel.SetActive(false);
         }
 
+        public void OpenLeaderboardPanel()
+        {
+            if (!CanInteractWithMenu() || ShouldShowPurchaseGate())
+            {
+                OpenPurchaseGatePanel();
+                return;
+            }
+
+            RefreshLeaderboardUi();
+            if (leaderboardPanel != null)
+                leaderboardPanel.SetActive(true);
+
+            NormalizeLeaderboardPanelLayout();
+            EnsureLeaderboardRequested(false);
+        }
+
+        public void CloseLeaderboardPanel()
+        {
+            if (leaderboardPanel != null)
+                leaderboardPanel.SetActive(false);
+        }
+
         public void BuyHintsPackage()
         {
+            ClosePaymentFailedPanel();
             purchaseGateStatusOverride = "Opening MiniPay for your hint purchase...";
             RefreshPurchaseGateUi();
             MiniPayBridge.Instance.BuyHints(hintPackageAmount);
         }
 
-        public void BuyLivesPackage()
-        {
-            purchaseGateStatusOverride = "Opening MiniPay for your lives purchase...";
-            RefreshPurchaseGateUi();
-            MiniPayBridge.Instance.BuyLives(livesPackageAmount);
-        }
-
         public void PayForGame()
         {
+            ClosePaymentFailedPanel();
             purchaseGateBusy = true;
             purchaseGateStatusOverride = "Waiting for MiniPay confirmation...";
             RefreshPurchaseGateUi();
             MiniPayBridge.Instance.PurchaseGame();
         }
 
-        public void OpenStreakPanel()
+        public void ConfirmPurchaseSuccessName()
         {
-            if (streakPanel != null)
-                streakPanel.SetActive(true);
+            if (purchaseSuccessNameInputField == null)
+                return;
+
+            string playerName = purchaseSuccessNameInputField.text?.Trim();
+            if (string.IsNullOrWhiteSpace(playerName))
+                return;
+
+            GameDataStore.PlayerName = playerName;
+            ClosePurchaseSuccessPanel();
+
+            if (shouldShowUnlockHintReward)
+            {
+                shouldShowUnlockHintReward = false;
+                OpenHintRewardPanel();
+                return;
+            }
+
+            ShowHomeAfterEntryResolved();
         }
 
-        public void CloseStreakPanel()
+        public void ConfirmHintReward()
         {
-            if (streakPanel != null)
-                streakPanel.SetActive(false);
+            showingHintPurchaseSuccess = false;
+            CloseHintRewardPanel();
+            ShowHomeAfterEntryResolved();
+        }
+
+        public void RetryFailedPayment()
+        {
+            ClosePaymentFailedPanel();
+            OpenPurchaseGatePanel();
         }
 
         public void RefreshLevelLabel()
@@ -324,13 +467,18 @@ namespace ArrowGame
             ButtonBindingUtility.Bind(primaryPlayButton, PlayGame);
             ButtonBindingUtility.Bind(cardPlayButton, PlayGame);
             ButtonBindingUtility.Bind(shopButton, OpenShopPanel);
+            ButtonBindingUtility.Bind(leaderboardButton, OpenLeaderboardPanel);
             ButtonBindingUtility.Bind(challengePlayButton, PlayChallenge);
-            ButtonBindingUtility.Bind(streakButton, OpenStreakPanel);
-            ButtonBindingUtility.Bind(closeStreakButton, CloseStreakPanel);
             ButtonBindingUtility.Bind(closeShopButton, CloseShopPanel);
             ButtonBindingUtility.Bind(hintBuyButton, BuyHintsPackage);
-            ButtonBindingUtility.Bind(livesBuyButton, BuyLivesPackage);
             ButtonBindingUtility.Bind(purchaseGatePayButton, PayForGame);
+            ButtonBindingUtility.Bind(paymentFailedRetryButton, RetryFailedPayment);
+            ButtonBindingUtility.Bind(closeLeaderboardButton, CloseLeaderboardPanel);
+            ButtonBindingUtility.Bind(purchaseSuccessOkButton, ConfirmPurchaseSuccessName);
+            ButtonBindingUtility.Bind(hintRewardOkButton, ConfirmHintReward);
+            ButtonBindingUtility.Bind(userNameEditButton, OpenUserNameEditPanel);
+            ButtonBindingUtility.Bind(userNameEditSaveButton, SaveUserNameEdit);
+            ButtonBindingUtility.Bind(userNameEditCancelButton, CloseUserNameEditPanel);
         }
 
         private void WireSettingsControls()
@@ -346,9 +494,18 @@ namespace ArrowGame
             ButtonBindingUtility.Bind(twitterButton, OpenTwitter);
 
             if (userNameInputField != null)
+                userNameInputField.readOnly = true;
+
+            if (purchaseSuccessNameInputField != null)
             {
-                userNameInputField.onEndEdit.RemoveListener(HandleUserNameChanged);
-                userNameInputField.onEndEdit.AddListener(HandleUserNameChanged);
+                purchaseSuccessNameInputField.onValueChanged.RemoveListener(HandlePurchaseSuccessNameChanged);
+                purchaseSuccessNameInputField.onValueChanged.AddListener(HandlePurchaseSuccessNameChanged);
+            }
+
+            if (userNameEditInputField != null)
+            {
+                userNameEditInputField.onValueChanged.RemoveListener(HandleUserNameEditChanged);
+                userNameEditInputField.onValueChanged.AddListener(HandleUserNameEditChanged);
             }
         }
 
@@ -358,6 +515,7 @@ namespace ArrowGame
                 return;
 
             userNameInputField = FindFirstInputField(settingsPanel, userNameInputField);
+            userNameEditButton = FindNamedButton(settingsPanel.transform, "Username Edit Button", userNameEditButton);
 
             vibrationToggleButton = FindButtonByKeywords(settingsPanel, vibrationToggleButton, "vibration", "vibrations");
             vibrationToggleBackground = FindButtonBackground(vibrationToggleButton, vibrationToggleBackground);
@@ -377,6 +535,15 @@ namespace ArrowGame
             telegramButton = FindButtonByKeywords(settingsPanel, telegramButton, "telegram");
             twitterButton = FindButtonByKeywords(settingsPanel, twitterButton, "twitter");
 
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            Transform canvasTransform = canvas != null ? canvas.transform : null;
+            userNameEditPanel = FindNamedObject(canvasTransform, "Username Edit Panel", userNameEditPanel);
+            userNameEditInputField = FindNamedInputField(canvasTransform, "Username Edit Input Field", userNameEditInputField);
+            userNameEditSaveButton = FindNamedButton(canvasTransform, "Username Edit Save Button", userNameEditSaveButton);
+            userNameEditCancelButton = FindNamedButton(canvasTransform, "Username Edit Cancel Button", userNameEditCancelButton);
+            userNameEditTitleText = FindNamedText(canvasTransform, "Username Edit Title", userNameEditTitleText);
+            userNameEditStatusText = FindNamedText(canvasTransform, "Username Edit Status", userNameEditStatusText);
+
             themeSurfaceImages = BuildSurfaceThemeImages();
             themeAccentImages = BuildAccentThemeImages();
             themePrimaryTexts = settingsPanel.GetComponentsInChildren<TextMeshProUGUI>(true);
@@ -388,6 +555,7 @@ namespace ArrowGame
                 return;
 
             shopButton = FindNamedButton(homePanel.transform, "Shop Button", shopButton);
+            leaderboardButton = FindNamedButton(homePanel.transform, "Leaderboard Button", leaderboardButton);
 
             Canvas canvas = FindFirstObjectByType<Canvas>();
             Transform canvasTransform = canvas != null ? canvas.transform : null;
@@ -420,6 +588,58 @@ namespace ArrowGame
             purchaseGateStatusText = FindNamedText(canvasTransform, "Purchase Gate Status Text", purchaseGateStatusText);
         }
 
+        private void TryAssignPurchaseSuccessReferences()
+        {
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            Transform canvasTransform = canvas != null ? canvas.transform : null;
+            purchaseSuccessPanel = FindNamedObject(canvasTransform, "Purchase Success Panel", purchaseSuccessPanel);
+            purchaseSuccessTitleText = FindNamedText(canvasTransform, "Purchase Success Title", purchaseSuccessTitleText);
+            purchaseSuccessBodyText = FindNamedText(canvasTransform, "Purchase Success Body", purchaseSuccessBodyText);
+            purchaseSuccessNameInputField = FindNamedInputField(canvasTransform, "Purchase Success Name Input", purchaseSuccessNameInputField);
+            purchaseSuccessOkButton = FindNamedButton(canvasTransform, "Purchase Success OK Button", purchaseSuccessOkButton);
+            purchaseSuccessStatusText = FindNamedText(canvasTransform, "Purchase Success Status Text", purchaseSuccessStatusText);
+        }
+
+        private void TryAssignHintRewardReferences()
+        {
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            Transform canvasTransform = canvas != null ? canvas.transform : null;
+            hintRewardPanel = FindNamedObject(canvasTransform, "Hint Reward Panel", hintRewardPanel);
+            hintRewardTitleText = FindNamedText(canvasTransform, "Hint Reward Title", hintRewardTitleText);
+            hintRewardBodyText = FindNamedText(canvasTransform, "Hint Reward Body", hintRewardBodyText);
+            hintRewardStatusText = FindNamedText(canvasTransform, "Hint Reward Status Text", hintRewardStatusText);
+            hintRewardOkButton = FindNamedButton(canvasTransform, "Hint Reward OK Button", hintRewardOkButton);
+        }
+
+        private void TryAssignPaymentFailedReferences()
+        {
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            Transform canvasTransform = canvas != null ? canvas.transform : null;
+            paymentFailedPanel = FindNamedObject(canvasTransform, "Payment Failed Panel", paymentFailedPanel);
+            paymentFailedTitleText = FindNamedText(canvasTransform, "Payment Failed Title", paymentFailedTitleText);
+            paymentFailedBodyText = FindNamedText(canvasTransform, "Payment Failed Body", paymentFailedBodyText);
+            paymentFailedRetryButton = FindNamedButton(canvasTransform, "Payment Failed Retry Button", paymentFailedRetryButton);
+        }
+
+        private void TryAssignLeaderboardReferences()
+        {
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            Transform canvasTransform = canvas != null ? canvas.transform : null;
+            leaderboardPanel = FindNamedObject(canvasTransform, "Menu Leaderboard Panel", leaderboardPanel);
+            closeLeaderboardButton = FindNamedButton(canvasTransform, "Menu Leaderboard Close Button", closeLeaderboardButton);
+            leaderboardTitleText = FindNamedText(canvasTransform, "Menu Leaderboard Title", leaderboardTitleText);
+            leaderboardPlayerBestText = FindNamedText(canvasTransform, "Menu Leaderboard Best Text", leaderboardPlayerBestText);
+
+            if (leaderboardEntryViews == null || leaderboardEntryViews.Length < LeaderboardEntryLimit)
+            {
+                Transform listRoot = FindDescendantByName(canvasTransform, "Menu Leaderboard List");
+                if (listRoot != null)
+                    leaderboardEntryViews = listRoot.GetComponentsInChildren<ChallengeLeaderboardEntryView>(true);
+            }
+
+            NormalizeLeaderboardPanelLayout();
+        }
+
         private Image[] BuildSurfaceThemeImages()
         {
             List<Image> images = new();
@@ -444,8 +664,19 @@ namespace ArrowGame
             SetTextIfBlank(shopTitleText, "SHOP");
             SetTextIfBlank(hintAmountText, hintPackageAmountLabel);
             SetTextIfBlank(hintPriceText, hintPackagePriceLabel);
-            SetTextIfBlank(livesAmountText, livesPackageAmountLabel);
-            SetTextIfBlank(livesPriceText, livesPackagePriceLabel);
+            if (hintBuyButton != null)
+                hintBuyButton.gameObject.SetActive(true);
+            if (livesOfferBackground != null)
+                livesOfferBackground.gameObject.SetActive(false);
+
+            if (livesBuyButton != null)
+                livesBuyButton.gameObject.SetActive(false);
+
+            if (livesAmountText != null)
+                livesAmountText.gameObject.SetActive(false);
+
+            if (livesPriceText != null)
+                livesPriceText.gameObject.SetActive(false);
         }
 
         private void RefreshPurchaseGateUi()
@@ -473,8 +704,96 @@ namespace ArrowGame
                 purchaseGatePayButton.interactable = !purchaseGateBusy && !GameDataStore.HasPurchasedGame;
         }
 
+        private void RefreshPurchaseSuccessUi()
+        {
+            if (purchaseSuccessTitleText != null)
+                purchaseSuccessTitleText.text = purchaseSuccessTitleLabel;
+
+            if (purchaseSuccessBodyText != null)
+                purchaseSuccessBodyText.text = purchaseSuccessBodyLabel;
+
+            if (purchaseSuccessStatusText != null)
+                purchaseSuccessStatusText.text = purchaseSuccessStatusLabel;
+
+            if (purchaseSuccessOkButton != null)
+            {
+                string currentValue = purchaseSuccessNameInputField != null
+                    ? purchaseSuccessNameInputField.text
+                    : string.Empty;
+
+                purchaseSuccessOkButton.interactable = !string.IsNullOrWhiteSpace(currentValue);
+            }
+        }
+
+        private void RefreshHintRewardUi()
+        {
+            if (hintRewardTitleText != null)
+                hintRewardTitleText.text = showingHintPurchaseSuccess ? hintPurchaseSuccessTitleLabel : hintRewardTitleLabel;
+
+            if (hintRewardBodyText != null)
+                hintRewardBodyText.text = showingHintPurchaseSuccess
+                    ? hintPurchaseSuccessBodyLabel.Replace("5", hintPackageAmount.ToString())
+                    : hintRewardBodyLabel.Replace("5", freeUnlockHintRewardCount.ToString());
+
+            if (hintRewardStatusText != null)
+                hintRewardStatusText.text = showingHintPurchaseSuccess
+                    ? $"{hintPurchaseSuccessStatusLabel} You now have {GameDataStore.HintCount} hints ready to use."
+                    : $"{hintRewardStatusLabel} You now have {GameDataStore.HintCount} hints ready to use.";
+        }
+
+        private void RefreshPaymentFailedUi()
+        {
+            if (paymentFailedTitleText != null)
+                paymentFailedTitleText.text = paymentFailedTitleLabel;
+
+            if (paymentFailedBodyText != null && string.IsNullOrWhiteSpace(paymentFailedBodyText.text))
+                paymentFailedBodyText.text = paymentFailedDefaultBodyLabel;
+        }
+
+        private void RefreshLeaderboardUi()
+        {
+            DateTime nowUtc = DateTime.UtcNow;
+            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName, out _);
+            float playerBestTime = GameDataStore.GetChallengeBestTimeSeconds(nowUtc);
+
+            if (leaderboardTitleText != null)
+                leaderboardTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1} - {patternName}";
+
+            if (leaderboardPlayerBestText != null)
+            {
+                leaderboardPlayerBestText.text = playerBestTime > 0f
+                    ? $"Your Best: {FormatRunTime(playerBestTime)}"
+                    : "Your Best: Not set yet";
+            }
+
+            int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
+            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(cycleIndex, nowUtc, patternName, Mathf.Max(leaderboardViewCount, LeaderboardEntryLimit));
+            for (int i = 0; i < leaderboardViewCount; i++)
+            {
+                ChallengeLeaderboardEntryData entryData = i < entries.Count ? entries[i] : null;
+                if (leaderboardEntryViews[i] != null)
+                    leaderboardEntryViews[i].Bind(entryData);
+            }
+
+            NormalizeLeaderboardPanelLayout();
+        }
+
+        private void EnsureLeaderboardRequested(bool forceRefresh)
+        {
+            DateTime nowUtc = DateTime.UtcNow;
+            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName, out _);
+            if (!forceRefresh && GameDataStore.HasChallengeLeaderboardSnapshot(cycleIndex, patternName))
+                return;
+
+            MiniPayBridge.Instance.RequestChallengeLeaderboard(patternName, LeaderboardEntryLimit);
+        }
+
         private void SetTabState(bool showHome, bool showCollection, bool showSettings)
         {
+            isHomeTabSelected = showHome;
+            isCollectionTabSelected = showCollection;
+            isSettingsTabSelected = showSettings;
+
             if (homePanel != null)
                 homePanel.SetActive(showHome);
             if (collectionPanel != null)
@@ -482,9 +801,14 @@ namespace ArrowGame
             if (settingsPanel != null)
                 settingsPanel.SetActive(showSettings);
 
-            SetTabVisual(homeTabBackground, homeTabLabel, showHome);
-            SetTabVisual(collectionTabBackground, collectionTabLabel, showCollection);
-            SetTabVisual(settingsTabBackground, settingsTabLabel, showSettings);
+            ApplyCurrentTabVisualState();
+        }
+
+        private void ApplyCurrentTabVisualState()
+        {
+            SetTabVisual(homeTabBackground, homeTabLabel, isHomeTabSelected);
+            SetTabVisual(collectionTabBackground, collectionTabLabel, isCollectionTabSelected);
+            SetTabVisual(settingsTabBackground, settingsTabLabel, isSettingsTabSelected);
         }
 
         private void SetTabVisual(Image background, TextMeshProUGUI label, bool isSelected)
@@ -538,10 +862,51 @@ namespace ArrowGame
             Application.OpenURL(url);
         }
 
-        private void HandleUserNameChanged(string value)
+        private void OpenUserNameEditPanel()
         {
-            GameDataStore.PlayerName = value;
+            if (userNameEditPanel != null)
+                userNameEditPanel.SetActive(true);
+
+            if (userNameEditInputField != null)
+            {
+                string currentName = GameDataStore.PlayerName;
+                userNameEditInputField.SetTextWithoutNotify(string.Equals(currentName, "You", StringComparison.OrdinalIgnoreCase) ? string.Empty : currentName);
+                userNameEditInputField.ActivateInputField();
+            }
+
+            if (userNameEditTitleText != null)
+                userNameEditTitleText.text = userNameEditTitleLabel;
+
+            if (userNameEditStatusText != null)
+                userNameEditStatusText.text = userNameEditStatusLabel;
+
             RefreshSettingsUi();
+        }
+
+        private void SaveUserNameEdit()
+        {
+            if (userNameEditInputField == null)
+                return;
+
+            string sanitizedName = userNameEditInputField.text?.Trim();
+            if (string.IsNullOrWhiteSpace(sanitizedName))
+                return;
+
+            GameDataStore.PlayerName = sanitizedName;
+            CloseUserNameEditPanel();
+            RefreshSettingsUi();
+        }
+
+        private void CloseUserNameEditPanel()
+        {
+            if (userNameEditPanel != null)
+                userNameEditPanel.SetActive(false);
+        }
+
+        private void HandleUserNameEditChanged(string value)
+        {
+            if (userNameEditSaveButton != null)
+                userNameEditSaveButton.interactable = !string.IsNullOrWhiteSpace(value);
         }
 
         private void RefreshSettingsUi()
@@ -549,11 +914,29 @@ namespace ArrowGame
             if (userNameInputField != null)
                 userNameInputField.SetTextWithoutNotify(GameDataStore.PlayerName);
 
+            if (userNameEditTitleText != null)
+                userNameEditTitleText.text = userNameEditTitleLabel;
+
+            if (userNameEditStatusText != null)
+                userNameEditStatusText.text = userNameEditStatusLabel;
+
+            if (userNameEditSaveButton != null)
+            {
+                string currentValue = userNameEditInputField != null ? userNameEditInputField.text : string.Empty;
+                userNameEditSaveButton.interactable = !string.IsNullOrWhiteSpace(currentValue);
+            }
+
             bool isVibrationEnabled = GameDataStore.IsVibrationEnabled;
             bool isSoundEnabled = GameDataStore.IsSoundEnabled;
             bool isDarkModeEnabled = ThemeManager.IsDarkModeEnabled;
 
-            ApplyDarkModeState(isDarkModeEnabled);
+            if (!hasAppliedThemeState || lastAppliedDarkModeEnabled != isDarkModeEnabled)
+            {
+                ApplyDarkModeState(isDarkModeEnabled);
+                hasAppliedThemeState = true;
+                lastAppliedDarkModeEnabled = isDarkModeEnabled;
+            }
+
             UpdateToggleVisual(vibrationToggleBackground, vibrationToggleKnob, isVibrationEnabled);
             UpdateToggleVisual(soundToggleBackground, soundToggleKnob, isSoundEnabled);
             UpdateToggleVisual(darkModeToggleBackground, darkModeToggleKnob, isDarkModeEnabled);
@@ -624,20 +1007,49 @@ namespace ArrowGame
             Color disabledTextColor = palette.IsDarkMode
                 ? new Color(0.77f, 0.83f, 0.92f, 1f)
                 : new Color(0.93f, 0.95f, 1f, 1f);
+            Color challengeInfoHeaderColor = palette.IsDarkMode
+                ? new Color(0.24f, 0.28f, 0.36f, 1f)
+                : new Color(0.25f, 0.25f, 0.27f, 1f);
+            Color challengeInfoBodyColor = palette.IsDarkMode
+                ? new Color(0.19f, 0.23f, 0.3f, 1f)
+                : new Color(0.19f, 0.2f, 0.2f, 1f);
+            Color challengeInfoTitleColor = palette.IsDarkMode
+                ? new Color(0.88f, 0.92f, 1f, 1f)
+                : new Color(0.35f, 0.43f, 0.98f, 1f);
+            Color challengeInfoPrimaryTextColor = palette.IsDarkMode
+                ? new Color(0.96f, 0.98f, 1f, 1f)
+                : Color.black;
+            Color challengeInfoSecondaryTextColor = palette.IsDarkMode
+                ? new Color(0.77f, 0.84f, 0.95f, 1f)
+                : new Color(0.37f, 0.39f, 0.51f, 1f);
 
             SetImageColor(settingsPanel != null ? settingsPanel.GetComponent<Image>() : null, settingsCardColor);
             SetImageColor(FindAncestorImage(vibrationToggleButton), settingsCardColor);
             SetImageColor(FindAncestorImage(privacyButton), settingsCardColor);
             SetImageColor(FindAncestorImage(challengeTitleText), menuCardColor);
-            SetImageColor(FindAncestorImage(streakHeadlineText), popupCardColor);
-            SetImageColor(streakPanel != null ? streakPanel.GetComponent<Image>() : null, popupOverlayColor);
+
+            Transform challengeCardTransform = challengeTitleText != null ? challengeTitleText.transform.parent : null;
+            Image challengeInfoRoot = FindNamedImage(challengeCardTransform, "User Info Chances", null);
+            Image challengeInfoHeader = FindNamedImage(challengeCardTransform, "Header", null);
+            Image challengeInfoBody = FindNamedImage(challengeCardTransform, "CONTANT", null);
+            TextMeshProUGUI challengeInfoHeaderText = FindNamedText(challengeCardTransform, "Label", null);
+            SetImageColor(challengeInfoRoot, challengeInfoBodyColor);
+            SetImageColor(challengeInfoHeader, challengeInfoHeaderColor);
+            SetImageColor(challengeInfoBody, challengeInfoBodyColor);
+            if (challengeInfoHeaderText != null)
+                challengeInfoHeaderText.color = challengeInfoTitleColor;
+            if (challengeChanceText != null)
+                challengeChanceText.color = challengeInfoPrimaryTextColor;
+            if (challengeNextChanceTimerText != null)
+                challengeNextChanceTimerText.color = challengeInfoSecondaryTextColor;
+            if (challengeStatusText != null)
+                challengeStatusText.color = challengeInfoSecondaryTextColor;
 
             ThemeManager.ApplyButtonTheme(primaryPlayButton, primaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
             ThemeManager.ApplyButtonTheme(cardPlayButton, primaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
             ThemeManager.ApplyButtonTheme(shopButton, secondaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(leaderboardButton, secondaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
             ThemeManager.ApplyButtonTheme(challengePlayButton, primaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
-            ThemeManager.ApplyButtonTheme(streakButton, secondaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
-            ThemeManager.ApplyButtonTheme(closeStreakButton, secondaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
             ThemeManager.ApplyButtonTheme(privacyButton, linkButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
             ThemeManager.ApplyButtonTheme(termsButton, linkButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
             ThemeManager.ApplyButtonTheme(faqButton, linkButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
@@ -668,6 +1080,10 @@ namespace ArrowGame
             SetImageColor(hintIconBackground, shopIconColor);
             SetImageColor(livesIconBackground, shopIconColor);
 
+            Color purchaseButtonColor = palette.IsDarkMode
+                ? new Color(0.98f, 0.74f, 0.22f, 1f)
+                : new Color(0.95f, 0.68f, 0.15f, 1f);
+
             ThemeManager.ApplyButtonTheme(closeShopButton, secondaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
             ThemeManager.ApplyButtonTheme(hintBuyButton, shopBuyButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
             ThemeManager.ApplyButtonTheme(livesBuyButton, shopBuyButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
@@ -679,7 +1095,37 @@ namespace ArrowGame
             Image purchasePriceBadge = FindNamedImage(purchaseGatePanel != null ? purchaseGatePanel.transform : null, "Purchase Gate Price Badge", null);
             SetImageColor(purchaseGateCard, popupCardColor);
             SetImageColor(purchasePriceBadge, shopHeaderColor);
-            ThemeManager.ApplyButtonTheme(purchaseGatePayButton, primaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+            ThemeManager.ApplyButtonTheme(purchaseGatePayButton, purchaseButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+
+            if (purchaseSuccessPanel != null)
+                SetImageColor(purchaseSuccessPanel.GetComponent<Image>(), popupOverlayColor);
+
+            Image purchaseSuccessCard = FindNamedImage(purchaseSuccessPanel != null ? purchaseSuccessPanel.transform : null, "Purchase Success Card", null);
+            SetImageColor(purchaseSuccessCard, popupCardColor);
+            ThemeManager.ApplyButtonTheme(purchaseSuccessOkButton, purchaseButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+
+            if (hintRewardPanel != null)
+                SetImageColor(hintRewardPanel.GetComponent<Image>(), popupOverlayColor);
+
+            Image hintRewardCard = FindNamedImage(hintRewardPanel != null ? hintRewardPanel.transform : null, "Hint Reward Card", null);
+            SetImageColor(hintRewardCard, popupCardColor);
+            ThemeManager.ApplyButtonTheme(hintRewardOkButton, purchaseButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+
+            if (paymentFailedPanel != null)
+                SetImageColor(paymentFailedPanel.GetComponent<Image>(), popupOverlayColor);
+
+            Image paymentFailedCard = FindNamedImage(paymentFailedPanel != null ? paymentFailedPanel.transform : null, "Payment Failed Card", null);
+            SetImageColor(paymentFailedCard, popupCardColor);
+            ThemeManager.ApplyButtonTheme(paymentFailedRetryButton, purchaseButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+
+            if (leaderboardPanel != null)
+                SetImageColor(leaderboardPanel.GetComponent<Image>(), popupOverlayColor);
+
+            Image leaderboardCard = FindNamedImage(leaderboardPanel != null ? leaderboardPanel.transform : null, "Menu Leaderboard Card", null);
+            SetImageColor(leaderboardCard, menuCardColor);
+            ThemeManager.ApplyButtonTheme(closeLeaderboardButton, secondaryButtonColor, buttonTextColor, disabledButtonColor, disabledTextColor);
+
+            ApplyCurrentTabVisualState();
         }
 
         private static void SetImageColor(Image image, Color color)
@@ -831,6 +1277,12 @@ namespace ArrowGame
             return child != null ? child.GetComponent<TextMeshProUGUI>() : fallback;
         }
 
+        private static TMP_InputField FindNamedInputField(Transform root, string name, TMP_InputField fallback)
+        {
+            Transform child = FindDescendantByName(root, name);
+            return child != null ? child.GetComponent<TMP_InputField>() : fallback;
+        }
+
         private static GameObject FindNamedObject(Transform root, string name, GameObject fallback)
         {
             Transform child = FindDescendantByName(root, name);
@@ -889,14 +1341,7 @@ namespace ArrowGame
         {
             DateTime nowUtc = DateTime.UtcNow;
             int chancesRemaining = GameDataStore.GetChallengeChancesRemainingToday(nowUtc);
-            int playedDayCount = GameDataStore.GetPlayedChallengeDayCount(nowUtc);
-            int currentDayIndex = GameDataStore.GetCurrentChallengeDayIndex(nowUtc);
-            int streakMask = GameDataStore.GetChallengeStreakMask(nowUtc);
-            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
-            string patternName = challengePatternNames != null && challengePatternNames.Length > 0
-                ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
-                : $"Pattern {cycleIndex + 1}";
+            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName, out TimeSpan timeRemaining);
 
             if (challengeTitleText != null)
                 challengeTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1}";
@@ -905,7 +1350,7 @@ namespace ArrowGame
                 challengePatternText.text = patternName;
 
             if (challengeCycleTimerText != null)
-                challengeCycleTimerText.text = FormatCountdown(GameDataStore.GetCurrentChallengeTimeRemaining(nowUtc));
+                challengeCycleTimerText.text = FormatCountdown(timeRemaining);
 
             if (challengeChanceText != null)
                 challengeChanceText.text = chancesRemaining > 0 ? $"{chancesRemaining} chance left" : "0 chances left";
@@ -927,29 +1372,6 @@ namespace ArrowGame
             if (challengePlayButton != null)
                 challengePlayButton.interactable = chancesRemaining > 0;
 
-            if (streakHeadlineText != null)
-                streakHeadlineText.text = $"{playedDayCount} day streak";
-
-            if (streakSummaryText != null)
-            {
-                streakSummaryText.text = playedDayCount > 0
-                    ? "Keep clearing the challenge every day to grow your streak!"
-                    : "Win a level to start your streak!";
-            }
-
-            if (streakDayViews == null)
-                return;
-
-            for (int i = 0; i < streakDayViews.Length; i++)
-            {
-                bool isPlayed = (streakMask & (1 << i)) != 0;
-                bool isCurrentDay = i == currentDayIndex;
-                bool isMissed = i < currentDayIndex && !isPlayed;
-
-                if (streakDayViews[i] != null)
-                    streakDayViews[i].Bind(i + 1, isPlayed, isCurrentDay, isMissed);
-            }
-
             ApplyMenuThemeOverrides();
         }
 
@@ -958,6 +1380,7 @@ namespace ArrowGame
             if (entryFlowCoroutine != null)
                 StopCoroutine(entryFlowCoroutine);
 
+            ApplyPreResolvedEntryState();
             entryFlowCoroutine = StartCoroutine(ResolveEntryFlowCO());
         }
 
@@ -974,30 +1397,87 @@ namespace ArrowGame
 
         private void RefreshEntryFlowState()
         {
+            entryFlowResolved = true;
             RefreshLevelLabel();
             RefreshChallengeUi();
             RefreshSettingsUi();
             RefreshShopUi();
             RefreshPurchaseGateUi();
+            RefreshPurchaseSuccessUi();
+            RefreshHintRewardUi();
+            ClosePaymentFailedPanel();
+            RefreshLeaderboardUi();
 
             if (GameDataStore.HasPurchasedGame)
             {
                 ClosePurchaseGatePanel();
+                ClosePurchaseSuccessPanel();
+                CloseHintRewardPanel();
+                ClosePaymentFailedPanel();
+                ShowHomeAfterEntryResolved();
                 return;
             }
 
-            if (!GameDataStore.HasCompletedTutorial)
+            if (ShouldOpenTutorial())
             {
                 SceneManager.LoadScene(TutorialSceneName);
                 return;
             }
 
+            ShowHomeAfterEntryResolved();
             OpenPurchaseGatePanel();
+        }
+
+        private void ApplyPreResolvedEntryState()
+        {
+            entryFlowResolved = false;
+
+            if (ShouldOpenTutorial())
+            {
+                SetTabState(false, false, false);
+                return;
+            }
+
+            ShowHomeAfterEntryResolved();
+
+            if (!GameDataStore.HasPurchasedGame)
+                OpenPurchaseGatePanel();
         }
 
         private bool ShouldShowPurchaseGate()
         {
             return GameDataStore.HasCompletedTutorial && !GameDataStore.HasPurchasedGame;
+        }
+
+        private bool ShouldSkipTutorial()
+        {
+            return GameDataStore.HasPurchasedGame || GameDataStore.HasCompletedTutorial;
+        }
+
+        private bool CanDecideTutorialGate()
+        {
+            return GameDataStore.HasResolvedBridgeBootstrap || ShouldSkipTutorial();
+        }
+
+        private bool ShouldOpenTutorial()
+        {
+            return GameDataStore.HasResolvedBridgeBootstrap &&
+                   !GameDataStore.HasPurchasedGame &&
+                   !GameDataStore.HasCompletedTutorial;
+        }
+
+        private bool CanInteractWithMenu()
+        {
+            return entryFlowResolved &&
+                   !ShouldShowPurchaseGate() &&
+                   (purchaseSuccessPanel == null || !purchaseSuccessPanel.activeSelf) &&
+                   (hintRewardPanel == null || !hintRewardPanel.activeSelf) &&
+                   (userNameEditPanel == null || !userNameEditPanel.activeSelf);
+        }
+
+        private void ShowHomeAfterEntryResolved()
+        {
+            SetTabState(true, false, false);
         }
 
         private void OpenPurchaseGatePanel()
@@ -1016,12 +1496,64 @@ namespace ArrowGame
                 purchaseGatePanel.SetActive(false);
         }
 
+        private void OpenPurchaseSuccessPanel()
+        {
+            if (purchaseSuccessPanel != null)
+                purchaseSuccessPanel.SetActive(true);
+
+            if (purchaseSuccessNameInputField != null)
+            {
+                string currentName = GameDataStore.PlayerName;
+                purchaseSuccessNameInputField.SetTextWithoutNotify(string.Equals(currentName, "You", StringComparison.OrdinalIgnoreCase) ? string.Empty : currentName);
+            }
+
+            RefreshPurchaseSuccessUi();
+        }
+
+        private void ClosePurchaseSuccessPanel()
+        {
+            if (purchaseSuccessPanel != null)
+                purchaseSuccessPanel.SetActive(false);
+        }
+
+        private void OpenHintRewardPanel()
+        {
+            RefreshHintRewardUi();
+            if (hintRewardPanel != null)
+                hintRewardPanel.SetActive(true);
+        }
+
+        private void CloseHintRewardPanel()
+        {
+            if (hintRewardPanel != null)
+                hintRewardPanel.SetActive(false);
+        }
+
+        private void OpenPaymentFailedPanel(string message)
+        {
+            if (paymentFailedBodyText != null)
+                paymentFailedBodyText.text = string.IsNullOrWhiteSpace(message) ? paymentFailedDefaultBodyLabel : message;
+
+            if (paymentFailedPanel != null)
+                paymentFailedPanel.SetActive(true);
+        }
+
+        private void ClosePaymentFailedPanel()
+        {
+            if (paymentFailedPanel != null)
+                paymentFailedPanel.SetActive(false);
+        }
+
         private void SubscribeMiniPayEvents()
         {
             GameDataStore.DataChanged -= HandleGameDataChanged;
             GameDataStore.DataChanged += HandleGameDataChanged;
+            GameDataStore.ChallengeLeaderboardChanged -= HandleChallengeLeaderboardChanged;
+            GameDataStore.ChallengeLeaderboardChanged += HandleChallengeLeaderboardChanged;
             MiniPayBridge.InitialStateResolved -= HandleInitialStateResolved;
             MiniPayBridge.InitialStateResolved += HandleInitialStateResolved;
+            MiniPayBridge.GamePurchaseStatusReceived -= HandleGamePurchaseStatusReceived;
+            MiniPayBridge.GamePurchaseStatusReceived += HandleGamePurchaseStatusReceived;
             MiniPayBridge.GamePurchaseSucceeded -= HandleGamePurchaseSucceeded;
             MiniPayBridge.GamePurchaseSucceeded += HandleGamePurchaseSucceeded;
             MiniPayBridge.GamePurchaseFailed -= HandleGamePurchaseFailed;
@@ -1039,7 +1571,9 @@ namespace ArrowGame
         private void UnsubscribeMiniPayEvents()
         {
             GameDataStore.DataChanged -= HandleGameDataChanged;
+            GameDataStore.ChallengeLeaderboardChanged -= HandleChallengeLeaderboardChanged;
             MiniPayBridge.InitialStateResolved -= HandleInitialStateResolved;
+            MiniPayBridge.GamePurchaseStatusReceived -= HandleGamePurchaseStatusReceived;
             MiniPayBridge.GamePurchaseSucceeded -= HandleGamePurchaseSucceeded;
             MiniPayBridge.GamePurchaseFailed -= HandleGamePurchaseFailed;
             MiniPayBridge.HintPurchaseSucceeded -= HandleConsumablePurchaseSucceeded;
@@ -1055,166 +1589,88 @@ namespace ArrowGame
 
         private void HandleGameDataChanged()
         {
+            if (isHandlingGameDataChange)
+                return;
+
+            isHandlingGameDataChange = true;
+            try
+            {
             RefreshLevelLabel();
             RefreshChallengeUi();
             RefreshSettingsUi();
             RefreshPurchaseGateUi();
+            RefreshPurchaseSuccessUi();
+            RefreshHintRewardUi();
+            RefreshLeaderboardUi();
 
             if (GameDataStore.HasPurchasedGame)
+            {
                 ClosePurchaseGatePanel();
+                ClosePaymentFailedPanel();
+            }
+            }
+            finally
+            {
+                isHandlingGameDataChange = false;
+            }
         }
 
         private void HandleGamePurchaseSucceeded()
         {
             purchaseGateBusy = false;
+            showingHintPurchaseSuccess = false;
+            shouldShowUnlockHintReward = true;
             purchaseGateStatusOverride = "Purchase complete. Welcome to Arrow Out.";
             RefreshPurchaseGateUi();
+            ClosePaymentFailedPanel();
             ClosePurchaseGatePanel();
+            OpenPurchaseSuccessPanel();
+        }
+
+        private void HandleGamePurchaseStatusReceived(string message)
+        {
+            purchaseGateBusy = false;
+            purchaseGateStatusOverride = string.IsNullOrWhiteSpace(message)
+                ? purchaseGateIdleStatusLabel
+                : message;
+            RefreshPurchaseGateUi();
+            OpenPurchaseGatePanel();
         }
 
         private void HandleGamePurchaseFailed(string errorMessage)
         {
             purchaseGateBusy = false;
-            purchaseGateStatusOverride = string.IsNullOrWhiteSpace(errorMessage) ? "Payment failed. Please try again." : errorMessage;
+            string message = string.IsNullOrWhiteSpace(errorMessage) ? paymentFailedDefaultBodyLabel : errorMessage;
+            purchaseGateStatusOverride = message;
             RefreshPurchaseGateUi();
             OpenPurchaseGatePanel();
+            OpenPaymentFailedPanel(message);
         }
 
         private void HandleConsumablePurchaseSucceeded()
         {
             purchaseGateStatusOverride = "Purchase complete.";
             RefreshPurchaseGateUi();
+            showingHintPurchaseSuccess = true;
+            ClosePaymentFailedPanel();
+            OpenHintRewardPanel();
         }
 
         private void HandleConsumablePurchaseFailed(string errorMessage)
         {
             purchaseGateStatusOverride = string.IsNullOrWhiteSpace(errorMessage) ? "Purchase failed. Please try again." : errorMessage;
             RefreshPurchaseGateUi();
+            OpenPaymentFailedPanel(purchaseGateStatusOverride);
         }
 
-        private void EnsurePurchaseGateUi()
+        private void HandleChallengeLeaderboardChanged()
         {
-            Canvas canvas = FindFirstObjectByType<Canvas>();
-            if (canvas == null)
-                return;
-
-            if (FindDescendantByName(canvas.transform, "Purchase Gate Panel") != null)
-                return;
-
-            RectTransform overlay = CreateRect("Purchase Gate Panel", canvas.transform);
-            StretchRect(overlay);
-            EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.8f));
-            overlay.gameObject.SetActive(false);
-
-            RectTransform card = CreateRect("Purchase Gate Card", overlay);
-            card.anchorMin = new Vector2(0.5f, 0.5f);
-            card.anchorMax = new Vector2(0.5f, 0.5f);
-            card.pivot = new Vector2(0.5f, 0.5f);
-            card.sizeDelta = new Vector2(720f, 620f);
-            card.anchoredPosition = Vector2.zero;
-            EnsureImage(card.gameObject, Color.white);
-
-            RectTransform titleRect = CreateRect("Purchase Gate Title", card);
-            titleRect.anchorMin = new Vector2(0.1f, 1f);
-            titleRect.anchorMax = new Vector2(0.9f, 1f);
-            titleRect.pivot = new Vector2(0.5f, 1f);
-            titleRect.sizeDelta = new Vector2(0f, 96f);
-            titleRect.anchoredPosition = new Vector2(0f, -42f);
-            CreateRectLabel(titleRect, purchaseGateTitleLabel, 46f, new Color(0.16f, 0.18f, 0.3f, 1f), TextAlignmentOptions.Center);
-
-            RectTransform bodyRect = CreateRect("Purchase Gate Body", card);
-            bodyRect.anchorMin = new Vector2(0.12f, 0.46f);
-            bodyRect.anchorMax = new Vector2(0.88f, 0.74f);
-            bodyRect.offsetMin = Vector2.zero;
-            bodyRect.offsetMax = Vector2.zero;
-            CreateRectLabel(bodyRect, purchaseGateBodyLabel, 29f, new Color(0.28f, 0.31f, 0.48f, 1f), TextAlignmentOptions.Center);
-
-            RectTransform priceBadge = CreateRect("Purchase Gate Price Badge", card);
-            priceBadge.anchorMin = new Vector2(0.5f, 0.5f);
-            priceBadge.anchorMax = new Vector2(0.5f, 0.5f);
-            priceBadge.pivot = new Vector2(0.5f, 0.5f);
-            priceBadge.sizeDelta = new Vector2(260f, 100f);
-            priceBadge.anchoredPosition = new Vector2(0f, 16f);
-            EnsureImage(priceBadge.gameObject, new Color(0.95f, 0.68f, 0.15f, 1f));
-
-            RectTransform priceTextRect = CreateRect("Purchase Gate Price Text", priceBadge);
-            StretchRect(priceTextRect);
-            CreateRectLabel(priceTextRect, purchaseGatePriceLabel, 42f, Color.white, TextAlignmentOptions.Center);
-
-            RectTransform statusRect = CreateRect("Purchase Gate Status Text", card);
-            statusRect.anchorMin = new Vector2(0.12f, 0.22f);
-            statusRect.anchorMax = new Vector2(0.88f, 0.34f);
-            statusRect.offsetMin = Vector2.zero;
-            statusRect.offsetMax = Vector2.zero;
-            CreateRectLabel(statusRect, purchaseGateIdleStatusLabel, 24f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center);
-
-            RectTransform buttonRect = CreateRect("Purchase Gate Pay Button", card);
-            buttonRect.anchorMin = new Vector2(0.5f, 0f);
-            buttonRect.anchorMax = new Vector2(0.5f, 0f);
-            buttonRect.pivot = new Vector2(0.5f, 0f);
-            buttonRect.sizeDelta = new Vector2(340f, 96f);
-            buttonRect.anchoredPosition = new Vector2(0f, 42f);
-            Image buttonImage = EnsureImage(buttonRect.gameObject, new Color(0.35f, 0.43f, 0.98f, 1f));
-            Button payButton = buttonRect.gameObject.AddComponent<Button>();
-            payButton.targetGraphic = buttonImage;
-            RectTransform buttonLabelRect = CreateRect("Label", buttonRect);
-            StretchRect(buttonLabelRect);
-            CreateRectLabel(buttonLabelRect, "Pay", 34f, Color.white, TextAlignmentOptions.Center);
+            RefreshLeaderboardUi();
         }
 
-        private static RectTransform CreateRect(string name, Transform parent)
+        private void HandlePurchaseSuccessNameChanged(string value)
         {
-            GameObject go = new(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            return go.GetComponent<RectTransform>();
-        }
-
-        private static void StretchRect(RectTransform rect)
-        {
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-        }
-
-        private static Image EnsureImage(GameObject gameObject, Color color)
-        {
-            Image image = gameObject.GetComponent<Image>();
-            if (image == null)
-                image = gameObject.AddComponent<Image>();
-
-            image.color = color;
-            if (image.sprite == null)
-                image.sprite = GetRuntimeSprite();
-            return image;
-        }
-
-        private static TextMeshProUGUI CreateRectLabel(RectTransform rect, string text, float fontSize, Color color, TextAlignmentOptions alignment)
-        {
-            TextMeshProUGUI label = rect.gameObject.AddComponent<TextMeshProUGUI>();
-            label.text = text;
-            label.fontSize = fontSize;
-            label.color = color;
-            label.alignment = alignment;
-            label.raycastTarget = false;
-            label.textWrappingMode = TextWrappingModes.Normal;
-            if (TMP_Settings.defaultFontAsset != null)
-                label.font = TMP_Settings.defaultFontAsset;
-            return label;
-        }
-
-        private static Sprite GetRuntimeSprite()
-        {
-            if (runtimeSprite != null)
-                return runtimeSprite;
-
-            Texture2D texture = new(2, 2, TextureFormat.RGBA32, false);
-            texture.SetPixels(new[] { Color.white, Color.white, Color.white, Color.white });
-            texture.Apply();
-            texture.wrapMode = TextureWrapMode.Clamp;
-            runtimeSprite = Sprite.Create(texture, new Rect(0f, 0f, 2f, 2f), new Vector2(0.5f, 0.5f), 2f);
-            runtimeSprite.name = "MenuSceneRuntimeSprite";
-            return runtimeSprite;
+            RefreshPurchaseSuccessUi();
         }
 
         private static string FormatCountdown(TimeSpan timeSpan)
@@ -1224,6 +1680,100 @@ namespace ArrowGame
 
             int totalDays = Mathf.Max(0, timeSpan.Days);
             return $"{totalDays:00}d {timeSpan.Hours:00}h {timeSpan.Minutes:00}m {timeSpan.Seconds:00}s";
+        }
+
+        private string GetCurrentPatternName(DateTime nowUtc)
+        {
+            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName, out _);
+            return string.IsNullOrWhiteSpace(patternName) ? $"Pattern {cycleIndex + 1}" : patternName;
+        }
+
+        private string[] GetResolvedChallengePatternNames()
+        {
+            return challengePatternNames != null && challengePatternNames.Length > 0
+                ? challengePatternNames
+                : DefaultChallengePatternNames;
+        }
+
+        private void ResolveChallengeCycleDisplay(DateTime nowUtc, out int cycleIndex, out string patternName, out TimeSpan timeRemaining)
+        {
+            string[] patternNames = GetResolvedChallengePatternNames();
+            if (GameDataStore.TryGetSharedChallengeWindow(out int sharedCycleIndex, out DateTime sharedEndUtc))
+            {
+                cycleIndex = Mathf.Max(0, sharedCycleIndex);
+                int patternIndex = Mathf.Max(0, cycleIndex) % Mathf.Max(patternNames.Length, 1);
+                patternName = patternNames.Length > 0
+                    ? patternNames[Mathf.Clamp(patternIndex, 0, patternNames.Length - 1)]
+                    : $"Pattern {cycleIndex + 1}";
+                timeRemaining = sharedEndUtc - nowUtc.ToUniversalTime();
+                return;
+            }
+
+            if (!GameDataStore.HasResolvedBridgeBootstrap && Application.isPlaying)
+                MiniPayBridge.Instance.RequestBootstrap();
+
+            cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            int fallbackPatternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, patternNames.Length);
+            patternName = patternNames.Length > 0
+                ? patternNames[Mathf.Clamp(fallbackPatternIndex, 0, patternNames.Length - 1)]
+                : $"Pattern {cycleIndex + 1}";
+            timeRemaining = GameDataStore.GetCurrentChallengeTimeRemaining(nowUtc);
+        }
+
+        private void NormalizeLeaderboardPanelLayout()
+        {
+            if (leaderboardPanel == null)
+                return;
+
+            Transform scrollRoot = FindDescendantByName(leaderboardPanel.transform, "Menu Leaderboard Scroll View");
+            if (scrollRoot != null)
+            {
+                LayoutElement scrollLayout = scrollRoot.GetComponent<LayoutElement>() ?? scrollRoot.gameObject.AddComponent<LayoutElement>();
+                scrollLayout.flexibleHeight = 1f;
+                scrollLayout.preferredHeight = Mathf.Max(scrollLayout.preferredHeight, 720f);
+            }
+
+            Transform spacer = FindDescendantByName(leaderboardPanel.transform, "Menu Leaderboard Bottom Spacer");
+            if (spacer == null)
+            {
+                Transform card = FindDescendantByName(leaderboardPanel.transform, "Menu Leaderboard Card");
+                if (card != null)
+                {
+                    GameObject spacerObject = new("Menu Leaderboard Bottom Spacer", typeof(RectTransform), typeof(LayoutElement));
+                    RectTransform spacerRect = spacerObject.GetComponent<RectTransform>();
+                    spacerRect.SetParent(card, false);
+                    spacerRect.SetSiblingIndex(Mathf.Max(0, card.childCount - 1));
+                    spacer = spacerRect;
+                }
+            }
+
+            if (spacer != null)
+            {
+                LayoutElement spacerLayout = spacer.GetComponent<LayoutElement>() ?? spacer.gameObject.AddComponent<LayoutElement>();
+                spacerLayout.flexibleHeight = 1f;
+                spacerLayout.minHeight = 24f;
+                spacerLayout.preferredHeight = Mathf.Max(spacerLayout.preferredHeight, 24f);
+                if (closeLeaderboardButton != null)
+                    spacer.SetSiblingIndex(Mathf.Max(0, closeLeaderboardButton.transform.GetSiblingIndex()));
+            }
+
+            if (closeLeaderboardButton != null)
+            {
+                LayoutElement closeLayout = closeLeaderboardButton.GetComponent<LayoutElement>() ?? closeLeaderboardButton.gameObject.AddComponent<LayoutElement>();
+                closeLayout.preferredHeight = Mathf.Max(closeLayout.preferredHeight, 80f);
+                closeLayout.flexibleHeight = 0f;
+                closeLeaderboardButton.transform.SetAsLastSibling();
+            }
+        }
+
+        private static string FormatRunTime(float seconds)
+        {
+            int totalMilliseconds = Mathf.RoundToInt(seconds * 1000f);
+            int minutes = totalMilliseconds / 60000;
+            int remainingMilliseconds = totalMilliseconds % 60000;
+            int wholeSeconds = remainingMilliseconds / 1000;
+            int milliseconds = remainingMilliseconds % 1000;
+            return $"{minutes:00}:{wholeSeconds:00}.{milliseconds:000}";
         }
     }
 

@@ -12,6 +12,9 @@ namespace ArrowGame
     public class ChallengeSceneController : MonoBehaviour
     {
         private const string MenuSceneName = "MenuScene";
+        private const int LeaderboardEntryLimit = 25;
+        private const float MintStatusDisplaySeconds = 6f;
+        private const float SharedChallengeWindowWaitSeconds = 2.5f;
 
         [Header("Core")]
         [SerializeField] private ArrowGameManager arrowGameManager;
@@ -41,12 +44,17 @@ namespace ArrowGame
         [SerializeField] private ChallengeLeaderboardEntryView[] leaderboardEntryViews;
         [SerializeField] private Button submitScoreButton;
         [SerializeField] private Button leaderboardMainMenuButton;
+        [SerializeField] private GameObject mintStatusPanel;
+        [SerializeField] private TextMeshProUGUI mintStatusText;
 
         private bool runTimerActive;
         private float runTimerStartRealtime;
         private bool hasPendingScoreSubmission;
         private float pendingCompletionSeconds;
+        private float pausedRunTimerSeconds;
         private bool challengeStarted;
+        private bool isSubmittingScore;
+        private Coroutine mintStatusRoutine;
 
         private void Awake()
         {
@@ -56,12 +64,12 @@ namespace ArrowGame
             WireButtons();
             PrepareInitialPanels();
             RefreshLeaderboardUi();
+            ConfigureChallengeWinUi();
         }
 
         private void Start()
         {
-            StartChallengeFlow();
-            MiniPayBridge.Instance.RequestChallengeLeaderboard(GetCurrentPatternName(DateTime.UtcNow), leaderboardEntryViews != null ? leaderboardEntryViews.Length : 10);
+            StartCoroutine(BeginChallengeSceneAfterBootstrapCO());
         }
 
         private void OnEnable()
@@ -74,6 +82,8 @@ namespace ArrowGame
             }
 
             GameDataStore.ChallengeLeaderboardChanged += HandleChallengeLeaderboardChanged;
+            MiniPayBridge.ChallengeLeaderboardSubmitted += HandleLeaderboardSubmitted;
+            MiniPayBridge.ChallengeLeaderboardSubmitFailed += HandleLeaderboardSubmitFailed;
         }
 
         private void OnDisable()
@@ -85,6 +95,8 @@ namespace ArrowGame
             }
 
             GameDataStore.ChallengeLeaderboardChanged -= HandleChallengeLeaderboardChanged;
+            MiniPayBridge.ChallengeLeaderboardSubmitted -= HandleLeaderboardSubmitted;
+            MiniPayBridge.ChallengeLeaderboardSubmitFailed -= HandleLeaderboardSubmitFailed;
         }
 
         private void Update()
@@ -119,18 +131,18 @@ namespace ArrowGame
 
         public void SubmitPendingScore()
         {
-            if (!hasPendingScoreSubmission)
+            if (!hasPendingScoreSubmission || isSubmittingScore)
                 return;
 
+            isSubmittingScore = true;
             GameDataStore.SubmitChallengeResult(pendingCompletionSeconds, DateTime.UtcNow);
             MiniPayBridge.Instance.SubmitChallengeResult(pendingCompletionSeconds, GetCurrentPatternName(DateTime.UtcNow));
-            hasPendingScoreSubmission = false;
 
             if (submitScoreButton != null)
                 submitScoreButton.interactable = false;
 
+            ShowMintStatus("Minting your score...", false);
             RefreshLeaderboardUi();
-            MiniPayBridge.Instance.RequestChallengeLeaderboard(GetCurrentPatternName(DateTime.UtcNow), leaderboardEntryViews != null ? leaderboardEntryViews.Length : 10);
         }
 
         private IEnumerator StartChallengeFlowCO()
@@ -191,6 +203,25 @@ namespace ArrowGame
             runTimerActive = true;
         }
 
+        private IEnumerator BeginChallengeSceneAfterBootstrapCO()
+        {
+            if (!GameDataStore.TryGetSharedChallengeWindow(out _, out _))
+            {
+                MiniPayBridge.Instance.RequestBootstrap();
+                float timeoutAt = Time.realtimeSinceStartup + SharedChallengeWindowWaitSeconds;
+                while (!GameDataStore.TryGetSharedChallengeWindow(out _, out _) &&
+                       !GameDataStore.HasResolvedBridgeBootstrap &&
+                       Time.realtimeSinceStartup < timeoutAt)
+                {
+                    yield return null;
+                }
+            }
+
+            RefreshLeaderboardUi();
+            StartChallengeFlow();
+            EnsureLeaderboardRequested(false);
+        }
+
         private void HandleChallengeCompleted()
         {
             runTimerActive = false;
@@ -209,17 +240,33 @@ namespace ArrowGame
             if (finalScoreText != null)
                 finalScoreText.text = FormatTime(pendingCompletionSeconds);
 
+            ConfigureChallengeWinUi();
             RefreshLeaderboardUi();
+            RebuildLeaderboardLayout();
+            EnsureLeaderboardRequested(false);
         }
 
         private void HandleChallengeFailed()
         {
+            pausedRunTimerSeconds = Mathf.Max(0f, Time.realtimeSinceStartup - runTimerStartRealtime);
             runTimerActive = false;
             if (arrowGameManager != null)
             {
                 arrowGameManager.ConfigureChallengeRetryUi(GameDataStore.CanUseChallengeRetry(DateTime.UtcNow));
                 arrowGameManager.SetExternalInputLock(true);
             }
+        }
+
+        public void ResumeRunTimerAfterRevive()
+        {
+            if (!challengeStarted || hasPendingScoreSubmission)
+                return;
+
+            runTimerStartRealtime = Time.realtimeSinceStartup - pausedRunTimerSeconds;
+            runTimerActive = true;
+
+            if (challengeHudPanel != null)
+                challengeHudPanel.SetActive(true);
         }
 
         public bool TryUseChallengeRetry()
@@ -255,7 +302,10 @@ namespace ArrowGame
                 leaderboardPanel.SetActive(false);
             if (submitScoreButton != null)
                 submitScoreButton.interactable = false;
+            if (mintStatusPanel != null)
+                mintStatusPanel.SetActive(false);
 
+            ConfigureChallengeWinUi();
             ApplySceneTheme();
         }
 
@@ -276,11 +326,10 @@ namespace ArrowGame
             ApplySceneTheme();
 
             DateTime nowUtc = DateTime.UtcNow;
+            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName);
             int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
-            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(nowUtc, Mathf.Max(leaderboardViewCount, 6));
+            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(cycleIndex, nowUtc, patternName, Mathf.Max(leaderboardViewCount, LeaderboardEntryLimit));
             float playerBestTime = GameDataStore.GetChallengeBestTimeSeconds(nowUtc);
-            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            string patternName = GetCurrentPatternName(nowUtc);
 
             if (leaderboardTitleText != null)
                 leaderboardTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1} - {patternName}";
@@ -301,6 +350,8 @@ namespace ArrowGame
                 if (leaderboardEntryViews[i] != null)
                     leaderboardEntryViews[i].Bind(entryData);
             }
+
+            RebuildLeaderboardLayout();
         }
 
         private void HandleChallengeLeaderboardChanged()
@@ -308,12 +359,83 @@ namespace ArrowGame
             RefreshLeaderboardUi();
         }
 
+        private void HandleLeaderboardSubmitted()
+        {
+            isSubmittingScore = false;
+            hasPendingScoreSubmission = false;
+
+            if (submitScoreButton != null)
+                submitScoreButton.interactable = false;
+
+            ShowMintStatus("Your score was successfully minted.", true);
+            EnsureLeaderboardRequested(true);
+            RefreshLeaderboardUi();
+        }
+
+        private void HandleLeaderboardSubmitFailed(string errorMessage)
+        {
+            isSubmittingScore = false;
+
+            if (submitScoreButton != null)
+                submitScoreButton.interactable = true;
+
+            ShowMintStatus(string.IsNullOrWhiteSpace(errorMessage) ? "Score minting failed. Please try again." : errorMessage, true);
+        }
+
+        private void EnsureLeaderboardRequested(bool forceRefresh)
+        {
+            DateTime nowUtc = DateTime.UtcNow;
+            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName);
+            if (!forceRefresh && GameDataStore.HasChallengeLeaderboardSnapshot(cycleIndex, patternName))
+                return;
+
+            MiniPayBridge.Instance.RequestChallengeLeaderboard(patternName, LeaderboardEntryLimit);
+        }
+
+        private void ShowMintStatus(string message, bool autoHide)
+        {
+            if (mintStatusText != null)
+                mintStatusText.text = message;
+
+            if (mintStatusPanel != null)
+                mintStatusPanel.SetActive(true);
+
+            if (mintStatusRoutine != null)
+                StopCoroutine(mintStatusRoutine);
+
+            mintStatusRoutine = autoHide ? StartCoroutine(HideMintStatusAfterDelay()) : null;
+        }
+
+        private IEnumerator HideMintStatusAfterDelay()
+        {
+            yield return new WaitForSecondsRealtime(MintStatusDisplaySeconds);
+            if (mintStatusPanel != null)
+                mintStatusPanel.SetActive(false);
+            mintStatusRoutine = null;
+        }
+
         private string GetCurrentPatternName(DateTime nowUtc)
         {
-            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
-            return challengePatternNames.Length > 0
-                ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
+            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName);
+            return string.IsNullOrWhiteSpace(patternName) ? $"Pattern {cycleIndex + 1}" : patternName;
+        }
+
+        private void ResolveChallengeCycleDisplay(DateTime nowUtc, out int cycleIndex, out string patternName)
+        {
+            if (GameDataStore.TryGetSharedChallengeWindow(out int sharedCycleIndex, out _))
+            {
+                cycleIndex = Mathf.Max(0, sharedCycleIndex);
+                int patternIndex = Mathf.Max(0, cycleIndex) % Mathf.Max(challengePatternNames.Length, 1);
+                patternName = challengePatternNames.Length > 0
+                    ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
+                    : $"Pattern {cycleIndex + 1}";
+                return;
+            }
+
+            cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            int fallbackPatternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
+            patternName = challengePatternNames.Length > 0
+                ? challengePatternNames[Mathf.Clamp(fallbackPatternIndex, 0, challengePatternNames.Length - 1)]
                 : $"Pattern {cycleIndex + 1}";
         }
 
@@ -336,6 +458,62 @@ namespace ArrowGame
             }
 
             ThemeManager.ApplyThemeToScene(gameObject.scene);
+        }
+
+        private void ConfigureChallengeWinUi()
+        {
+            if (arrowGameManager == null || arrowGameManager.winUI == null)
+                return;
+
+            Button continueButton = FindButtonByLabel(arrowGameManager.winUI.transform, "continue");
+            if (continueButton != null)
+                continueButton.gameObject.SetActive(false);
+        }
+
+        private void RebuildLeaderboardLayout()
+        {
+            Canvas.ForceUpdateCanvases();
+
+            if (leaderboardPanel != null && leaderboardPanel.transform is RectTransform leaderboardRect)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(leaderboardRect);
+
+            RectTransform card = FindDescendantRect(leaderboardPanel != null ? leaderboardPanel.transform : null, "Challenge Leaderboard Card");
+            if (card != null)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(card);
+
+            Canvas.ForceUpdateCanvases();
+        }
+
+        private static RectTransform FindDescendantRect(Transform root, string name)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(name))
+                return null;
+
+            Transform[] children = root.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < children.Length; i++)
+            {
+                if (children[i] != null && children[i].name == name)
+                    return children[i] as RectTransform;
+            }
+
+            return null;
+        }
+
+        private static Button FindButtonByLabel(Transform root, string labelText)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(labelText))
+                return null;
+
+            string search = labelText.Trim().ToLowerInvariant();
+            Button[] buttons = root.GetComponentsInChildren<Button>(true);
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                TMP_Text label = buttons[i] != null ? buttons[i].GetComponentInChildren<TMP_Text>(true) : null;
+                if (label != null && !string.IsNullOrWhiteSpace(label.text) && label.text.Trim().ToLowerInvariant() == search)
+                    return buttons[i];
+            }
+
+            return null;
         }
 
     }

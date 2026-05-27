@@ -216,6 +216,7 @@ namespace ArrowGame
         private static readonly Dictionary<int, Color> TextBaseColors = new();
         private static readonly Dictionary<int, Color> SpriteBaseColors = new();
         private static readonly Dictionary<int, Color> CameraBaseColors = new();
+        private static bool isApplyingThemeToScene;
 
         public static bool IsDarkModeEnabled => GameDataStore.IsDarkModeEnabled;
         public static ThemePalette CurrentPalette => IsDarkModeEnabled ? DarkPalette : LightPalette;
@@ -233,11 +234,22 @@ namespace ArrowGame
             if (!scene.IsValid())
                 return;
 
+            if (isApplyingThemeToScene)
+                return;
+
             ThemePalette palette = CurrentPalette;
-            GameObject[] roots = scene.GetRootGameObjects();
-            for (int i = 0; i < roots.Length; i++)
+            isApplyingThemeToScene = true;
+            try
             {
-                ApplyThemeToRoot(roots[i], palette);
+                GameObject[] roots = scene.GetRootGameObjects();
+                for (int i = 0; i < roots.Length; i++)
+                {
+                    ApplyThemeToRoot(roots[i], palette);
+                }
+            }
+            finally
+            {
+                isApplyingThemeToScene = false;
             }
         }
 

@@ -8,16 +8,21 @@ namespace ArrowGame
     public class ChallengeSceneAuthoring : MonoBehaviour
     {
         private static Sprite runtimeSprite;
+        private static TMP_FontAsset leaderboardEntryFontAsset;
 
-        private readonly Color overlayColor = new(0.05f, 0.06f, 0.1f, 0.82f);
-        private readonly Color panelColor = new(0.12f, 0.13f, 0.22f, 0.96f);
-        private readonly Color panelSoftColor = new(0.17f, 0.18f, 0.29f, 0.94f);
+        private readonly Color overlayColor = new(0.05f, 0.06f, 0.1f, 1f);
+        private readonly Color panelColor = new(0.12f, 0.13f, 0.22f, 1f);
+        private readonly Color panelSoftColor = new(0.17f, 0.18f, 0.29f, 1f);
         private readonly Color accentColor = new(0.35f, 0.43f, 0.98f, 1f);
         private readonly Color textPrimaryColor = new(0.95f, 0.96f, 1f, 1f);
         private readonly Color textSecondaryColor = new(0.67f, 0.7f, 0.84f, 1f);
 
         private void OnEnable()
         {
+#if UNITY_EDITOR
+            if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode)
+                return;
+#endif
             if (Application.isPlaying)
                 return;
 
@@ -48,10 +53,12 @@ namespace ArrowGame
             ChallengeUiRefs refs = new();
 
             RemoveGeneratedChallengeMenuPanel(canvasRoot);
+            RemoveLegacyStreakUi(canvasRoot);
             refs.loadingPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge Loading Panel", false).gameObject;
             refs.countdownPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge Countdown Panel", false).gameObject;
             refs.challengeHudPanel = FindOrCreateFullScreenPanel(canvasRoot, "Challenge HUD Panel", false).gameObject;
             refs.leaderboardPanel = gameManager.winUI != null ? gameManager.winUI : FindOrCreateFullScreenPanel(canvasRoot, "Challenge Leaderboard Panel", false).gameObject;
+            RemoveLegacyContinueButton(refs.leaderboardPanel.transform);
 
             BuildLoadingPanel(refs.loadingPanel.transform, refs);
             BuildCountdownPanel(refs.countdownPanel.transform, refs);
@@ -95,11 +102,15 @@ namespace ArrowGame
 
         private void BuildHudPanel(Transform panelRoot, ChallengeUiRefs refs)
         {
+            bool timerHolderExists = FindChildRect(panelRoot, "Run Timer Holder") != null;
             RectTransform timerHolder = FindOrCreateCard(panelRoot, "Run Timer Holder", new Vector2(360f, 120f), panelColor);
-            timerHolder.anchorMin = new Vector2(0.5f, 1f);
-            timerHolder.anchorMax = new Vector2(0.5f, 1f);
-            timerHolder.pivot = new Vector2(0.5f, 1f);
-            timerHolder.anchoredPosition = new Vector2(0f, -40f);
+            if (!timerHolderExists)
+            {
+                timerHolder.anchorMin = new Vector2(0.5f, 1f);
+                timerHolder.anchorMax = new Vector2(0.5f, 1f);
+                timerHolder.pivot = new Vector2(0.5f, 1f);
+                timerHolder.anchoredPosition = new Vector2(0f, -40f);
+            }
             CreateOrUpdateLabel(timerHolder, "Run Timer", "00:00.000", 58f, textPrimaryColor, out refs.runTimerText);
         }
 
@@ -112,17 +123,54 @@ namespace ArrowGame
             CreateOrUpdateLabel(card, "Final Score", "00:00.000", 40f, accentColor, out refs.finalScoreText);
             CreateOrUpdateLabel(card, "Player Best", "Your Best: Not set yet", 28f, textSecondaryColor, out refs.leaderboardPlayerBestText);
 
-            refs.submitScoreButton = FindOrCreateButton(card, "Submit Score Button", "Assign Your Score", new Vector2(0f, 80f));
+            refs.submitScoreButton = FindOrCreateButton(card, "Submit Score Button", "Mint Your Score", new Vector2(0f, 80f));
             refs.leaderboardMainMenuButton = FindOrCreateButton(card, "Leaderboard Main Menu Button", "Main Menu", new Vector2(0f, 80f));
 
-            RectTransform listRoot = FindOrCreateRect(card, "Leaderboard List");
-            EnsureVerticalLayout(listRoot.gameObject, new RectOffset(0, 0, 0, 0), 12f);
-            LayoutElement listRootLayout = listRoot.gameObject.GetComponent<LayoutElement>() ?? listRoot.gameObject.AddComponent<LayoutElement>();
-            listRootLayout.flexibleHeight = 1f;
+            RectTransform scrollRoot = FindOrCreateRect(card, "Leaderboard Scroll View");
+            LayoutElement scrollLayout = scrollRoot.gameObject.GetComponent<LayoutElement>() ?? scrollRoot.gameObject.AddComponent<LayoutElement>();
+            scrollLayout.flexibleHeight = 1f;
+            scrollLayout.preferredHeight = 720f;
+            Image scrollBackground = scrollRoot.gameObject.GetComponent<Image>() ?? scrollRoot.gameObject.AddComponent<Image>();
+            scrollBackground.color = new Color(1f, 1f, 1f, 0.02f);
 
-            refs.leaderboardEntryViews = new ChallengeLeaderboardEntryView[6];
+            ScrollRect scrollRect = scrollRoot.gameObject.GetComponent<ScrollRect>() ?? scrollRoot.gameObject.AddComponent<ScrollRect>();
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.scrollSensitivity = 24f;
+
+            RectTransform viewport = FindOrCreateRect(scrollRoot, "Leaderboard Viewport");
+            StretchRect(viewport);
+            Image viewportImage = viewport.gameObject.GetComponent<Image>() ?? viewport.gameObject.AddComponent<Image>();
+            viewportImage.color = new Color(1f, 1f, 1f, 0.01f);
+            if (viewport.gameObject.GetComponent<RectMask2D>() == null)
+                viewport.gameObject.AddComponent<RectMask2D>();
+
+            RectTransform listRoot = FindOrCreateRect(viewport, "Leaderboard List");
+            listRoot.anchorMin = new Vector2(0f, 1f);
+            listRoot.anchorMax = new Vector2(1f, 1f);
+            listRoot.pivot = new Vector2(0.5f, 1f);
+            listRoot.anchoredPosition = Vector2.zero;
+            listRoot.sizeDelta = Vector2.zero;
+            EnsureVerticalLayout(listRoot.gameObject, new RectOffset(0, 0, 0, 0), 12f);
+            ContentSizeFitter listFitter = listRoot.gameObject.GetComponent<ContentSizeFitter>() ?? listRoot.gameObject.AddComponent<ContentSizeFitter>();
+            listFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            listFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scrollRect.viewport = viewport;
+            scrollRect.content = listRoot;
+
+            refs.leaderboardEntryViews = new ChallengeLeaderboardEntryView[25];
             for (int i = 0; i < refs.leaderboardEntryViews.Length; i++)
                 refs.leaderboardEntryViews[i] = FindOrCreateLeaderboardEntry(listRoot, i);
+
+            RectTransform statusPanel = FindOrCreateCard(panelRoot, "Mint Status Panel", new Vector2(640f, 120f), accentColor);
+            statusPanel.anchorMin = new Vector2(0.5f, 1f);
+            statusPanel.anchorMax = new Vector2(0.5f, 1f);
+            statusPanel.pivot = new Vector2(0.5f, 1f);
+            statusPanel.anchoredPosition = new Vector2(0f, -36f);
+            statusPanel.gameObject.SetActive(false);
+            CreateOrUpdateLabel(statusPanel, "Mint Status Text", "Your score was successfully minted.", 28f, Color.white, out refs.mintStatusText);
+            refs.mintStatusPanel = statusPanel.gameObject;
         }
 
         private ChallengeLeaderboardEntryView FindOrCreateLeaderboardEntry(Transform parent, int index)
@@ -135,14 +183,14 @@ namespace ArrowGame
             layout.padding = new RectOffset(28, 28, 18, 18);
             layout.spacing = 16f;
             layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childControlWidth = false;
+            layout.childControlWidth = true;
             layout.childControlHeight = true;
             layout.childForceExpandWidth = false;
             layout.childForceExpandHeight = false;
 
-            CreateOrUpdateLabel(root, "Rank Text", $"{index + 1}", 34f, textPrimaryColor, out TextMeshProUGUI rankText, new Vector2(90f, 84f));
-            CreateOrUpdateLabel(root, "Name Text", $"Player {index + 1}", 30f, textPrimaryColor, out TextMeshProUGUI nameText, new Vector2(320f, 84f));
-            CreateOrUpdateLabel(root, "Time Text", "00:00.000", 30f, textPrimaryColor, out TextMeshProUGUI timeText, new Vector2(220f, 84f));
+            CreateOrUpdateLabel(root, "Rank Text", $"{index + 1}", 34f, textPrimaryColor, out TextMeshProUGUI rankText, new Vector2(225f, 84f));
+            CreateOrUpdateLabel(root, "Name Text", $"Player {index + 1}", 30f, textPrimaryColor, out TextMeshProUGUI nameText, new Vector2(225f, 84f));
+            CreateOrUpdateLabel(root, "Time Text", "00:00.000", 30f, textPrimaryColor, out TextMeshProUGUI timeText, new Vector2(225f, 84f));
 
             GameObject firstBadge = FindOrCreateMarker(root, "First Place Badge", "1", 28f, Color.white);
             GameObject secondBadge = FindOrCreateMarker(root, "Second Place Badge", "2", 28f, Color.white);
@@ -150,6 +198,13 @@ namespace ArrowGame
             firstBadge.SetActive(false);
             secondBadge.SetActive(false);
             thirdBadge.SetActive(false);
+
+            ApplyLeaderboardEntryFont(rankText);
+            ApplyLeaderboardEntryFont(nameText);
+            ApplyLeaderboardEntryFont(timeText);
+            ApplyLeaderboardEntryFont(firstBadge != null ? firstBadge.GetComponent<TextMeshProUGUI>() : null);
+            ApplyLeaderboardEntryFont(secondBadge != null ? secondBadge.GetComponent<TextMeshProUGUI>() : null);
+            ApplyLeaderboardEntryFont(thirdBadge != null ? thirdBadge.GetComponent<TextMeshProUGUI>() : null);
 
             ChallengeLeaderboardEntryView view = root.GetComponent<ChallengeLeaderboardEntryView>();
             if (view == null)
@@ -178,6 +233,40 @@ namespace ArrowGame
             DestroyImmediate(menuPanel.gameObject);
         }
 
+        private static void RemoveLegacyStreakUi(Transform canvasRoot)
+        {
+            RectTransform streakPanel = FindChildRect(canvasRoot, "Challenge Streak Panel");
+            if (streakPanel == null)
+                return;
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                UnityEditor.Undo.DestroyObjectImmediate(streakPanel.gameObject);
+                return;
+            }
+#endif
+
+            DestroyImmediate(streakPanel.gameObject);
+        }
+
+        private static void RemoveLegacyContinueButton(Transform root)
+        {
+            Button continueButton = FindButtonByLabel(root, "continue");
+            if (continueButton == null)
+                return;
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                UnityEditor.Undo.DestroyObjectImmediate(continueButton.gameObject);
+                return;
+            }
+#endif
+
+            DestroyImmediate(continueButton.gameObject);
+        }
+
         private static void AssignControllerReferences(ChallengeSceneController controller, ArrowGameManager gameManager, ChallengeUiRefs refs)
         {
 #if UNITY_EDITOR
@@ -197,6 +286,8 @@ namespace ArrowGame
             SerializedReferenceUtility.Assign(serializedObject, "submitScoreButton", refs.submitScoreButton);
             SerializedReferenceUtility.Assign(serializedObject, "leaderboardMainMenuButton", refs.leaderboardMainMenuButton);
             SerializedReferenceUtility.AssignArray(serializedObject, "leaderboardEntryViews", refs.leaderboardEntryViews);
+            SerializedReferenceUtility.Assign(serializedObject, "mintStatusPanel", refs.mintStatusPanel);
+            SerializedReferenceUtility.Assign(serializedObject, "mintStatusText", refs.mintStatusText);
             serializedObject.ApplyModifiedPropertiesWithoutUndo();
 #endif
         }
@@ -234,6 +325,10 @@ namespace ArrowGame
 
             StretchRect(rect);
             Image image = EnsureImage(rect.gameObject, overlayColor);
+            float alpha = image.color.a;
+            image.sprite = GetRuntimeSprite();
+            image.type = Image.Type.Simple;
+            image.color = new Color(overlayColor.r, overlayColor.g, overlayColor.b, alpha);
             rect.gameObject.SetActive(active);
             return rect;
         }
@@ -241,16 +336,27 @@ namespace ArrowGame
         private RectTransform FindOrCreateCard(Transform parent, string name, Vector2 size, Color color)
         {
             RectTransform rect = FindChildRect(parent, name);
+            bool created = false;
             if (rect == null)
+            {
                 rect = CreateRect(name, parent);
+                created = true;
+            }
 
-            rect.anchorMin = new Vector2(0.5f, 0.5f);
-            rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = size;
-            rect.anchoredPosition = Vector2.zero;
+            if (created)
+            {
+                rect.anchorMin = new Vector2(0.5f, 0.5f);
+                rect.anchorMax = new Vector2(0.5f, 0.5f);
+                rect.pivot = new Vector2(0.5f, 0.5f);
+                rect.sizeDelta = size;
+                rect.anchoredPosition = Vector2.zero;
+            }
 
             Image image = EnsureImage(rect.gameObject, color, Image.Type.Sliced);
+            float alpha = image.color.a;
+            image.sprite = GetRuntimeSprite();
+            image.type = Image.Type.Sliced;
+            image.color = new Color(color.r, color.g, color.b, alpha);
             return rect;
         }
 
@@ -264,6 +370,23 @@ namespace ArrowGame
         {
             Transform child = parent.Find(name);
             return child != null ? child as RectTransform : null;
+        }
+
+        private static Button FindButtonByLabel(Transform root, string labelText)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(labelText))
+                return null;
+
+            string search = labelText.Trim().ToLowerInvariant();
+            Button[] buttons = root.GetComponentsInChildren<Button>(true);
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                TMP_Text label = buttons[i] != null ? buttons[i].GetComponentInChildren<TMP_Text>(true) : null;
+                if (label != null && !string.IsNullOrWhiteSpace(label.text) && label.text.Trim().ToLowerInvariant() == search)
+                    return buttons[i];
+            }
+
+            return null;
         }
 
         private Button FindOrCreateButton(Transform parent, string name, string label, Vector2 size)
@@ -298,8 +421,12 @@ namespace ArrowGame
         private void CreateOrUpdateLabel(Transform parent, string name, string text, float fontSize, Color color, out TextMeshProUGUI label, Vector2? preferredSize = null)
         {
             RectTransform rect = FindChildRect(parent, name);
+            bool createdRect = false;
             if (rect == null)
+            {
                 rect = CreateRect(name, parent);
+                createdRect = true;
+            }
 
             if (preferredSize.HasValue)
             {
@@ -310,22 +437,34 @@ namespace ArrowGame
 
             StretchRect(rect);
             label = rect.GetComponent<TextMeshProUGUI>();
+            bool createdLabel = false;
             if (label == null)
+            {
                 label = rect.gameObject.AddComponent<TextMeshProUGUI>();
+                createdLabel = true;
+            }
 
-            label.text = text;
-            label.fontSize = fontSize;
-            label.color = color;
-            label.alignment = TextAlignmentOptions.Center;
-            label.raycastTarget = false;
-            label.textWrappingMode = TextWrappingModes.Normal;
+            if (createdLabel || string.IsNullOrEmpty(label.text))
+                label.text = text;
+            if (createdLabel || label.fontSize <= 0f)
+                label.fontSize = fontSize;
+            if (createdLabel)
+            {
+                label.color = color;
+                label.alignment = TextAlignmentOptions.Center;
+                label.raycastTarget = false;
+                label.textWrappingMode = TextWrappingModes.Normal;
+            }
 
-            if (TMP_Settings.defaultFontAsset != null)
+            if (createdLabel && TMP_Settings.defaultFontAsset != null)
                 label.font = TMP_Settings.defaultFontAsset;
 
-            ContentSizeFitter fitter = rect.gameObject.GetComponent<ContentSizeFitter>() ?? rect.gameObject.AddComponent<ContentSizeFitter>();
-            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
-            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            if (createdRect || createdLabel)
+            {
+                ContentSizeFitter fitter = rect.gameObject.GetComponent<ContentSizeFitter>() ?? rect.gameObject.AddComponent<ContentSizeFitter>();
+                fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+                fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            }
         }
 
         private static GameObject FindOrCreateMarker(Transform parent, string name, string text, float fontSize, Color color)
@@ -336,16 +475,25 @@ namespace ArrowGame
 
             StretchRect(rect);
             TextMeshProUGUI label = rect.GetComponent<TextMeshProUGUI>();
+            bool createdLabel = false;
             if (label == null)
+            {
                 label = rect.gameObject.AddComponent<TextMeshProUGUI>();
+                createdLabel = true;
+            }
 
-            label.text = text;
-            label.fontSize = fontSize;
-            label.color = color;
-            label.alignment = TextAlignmentOptions.Center;
-            label.raycastTarget = false;
+            if (createdLabel || string.IsNullOrEmpty(label.text))
+                label.text = text;
+            if (createdLabel || label.fontSize <= 0f)
+                label.fontSize = fontSize;
+            if (createdLabel)
+            {
+                label.color = color;
+                label.alignment = TextAlignmentOptions.Center;
+                label.raycastTarget = false;
+            }
 
-            if (TMP_Settings.defaultFontAsset != null)
+            if (createdLabel && TMP_Settings.defaultFontAsset != null)
                 label.font = TMP_Settings.defaultFontAsset;
 
             return rect.gameObject;
@@ -382,6 +530,29 @@ namespace ArrowGame
             return image;
         }
 
+        private static void ApplyLeaderboardEntryFont(TextMeshProUGUI label)
+        {
+            if (label == null)
+                return;
+
+            TMP_FontAsset fontAsset = GetLeaderboardEntryFontAsset();
+            if (fontAsset == null)
+                return;
+
+            label.font = fontAsset;
+            if (fontAsset.material != null)
+                label.fontSharedMaterial = fontAsset.material;
+        }
+
+        private static TMP_FontAsset GetLeaderboardEntryFontAsset()
+        {
+            if (leaderboardEntryFontAsset != null)
+                return leaderboardEntryFontAsset;
+
+            leaderboardEntryFontAsset = Resources.Load<TMP_FontAsset>("Fonts & Materials/Octin College Rg SDF");
+            return leaderboardEntryFontAsset;
+        }
+
         private static Sprite GetRuntimeSprite()
         {
             if (runtimeSprite != null)
@@ -410,6 +581,8 @@ namespace ArrowGame
             public TextMeshProUGUI leaderboardTitleText;
             public TextMeshProUGUI leaderboardPlayerBestText;
             public TextMeshProUGUI finalScoreText;
+            public GameObject mintStatusPanel;
+            public TextMeshProUGUI mintStatusText;
             public Button submitScoreButton;
             public Button leaderboardMainMenuButton;
             public ChallengeLeaderboardEntryView[] leaderboardEntryViews;

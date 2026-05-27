@@ -18,18 +18,19 @@ namespace ArrowGame
             public TextMeshProUGUI chanceText;
             public TextMeshProUGUI nextChanceTimerText;
             public TextMeshProUGUI statusText;
-            public Button streakButton;
             public Button challengePlayButton;
-            public GameObject streakPanel;
-            public Button closeStreakButton;
-            public TextMeshProUGUI streakHeadlineText;
-            public TextMeshProUGUI streakSummaryText;
-            public ChallengeStreakDayView[] streakDayViews;
         }
 
         private sealed class SettingsMenuReferences
         {
             public TMP_InputField userNameInputField;
+            public Button userNameEditButton;
+            public GameObject userNameEditPanel;
+            public TMP_InputField userNameEditInputField;
+            public Button userNameEditSaveButton;
+            public Button userNameEditCancelButton;
+            public TextMeshProUGUI userNameEditTitleText;
+            public TextMeshProUGUI userNameEditStatusText;
             public Button vibrationToggleButton;
             public Image vibrationToggleBackground;
             public RectTransform vibrationToggleKnob;
@@ -50,7 +51,19 @@ namespace ArrowGame
             public TextMeshProUGUI[] themeSecondaryTexts;
         }
 
+        private sealed class PurchaseGateReferences
+        {
+            public GameObject panel;
+            public Button payButton;
+            public TextMeshProUGUI titleText;
+            public TextMeshProUGUI bodyText;
+            public TextMeshProUGUI priceText;
+            public TextMeshProUGUI statusText;
+        }
+
         private static Sprite runtimeSprite;
+        private static TMP_FontAsset primaryUiFontAsset;
+        private static TMP_FontAsset displayFontAsset;
 
         private readonly Color cardColor = new(0.18f, 0.2f, 0.31f, 1f);
         private readonly Color accentColor = new(0.35f, 0.43f, 0.98f, 1f);
@@ -69,6 +82,8 @@ namespace ArrowGame
             EnsureHomeShopUi();
             EnsureChallengeUi();
             EnsureSettingsUi();
+            EnsurePurchaseGateUi();
+            EnsurePreferredUiFonts();
         }
 
         [ContextMenu("Rebuild Menu Hierarchy")]
@@ -77,6 +92,166 @@ namespace ArrowGame
             EnsureHomeShopUi(forceRebuild: true);
             EnsureChallengeUi(forceRebuild: true);
             EnsureSettingsUi(forceRebuild: true);
+            EnsurePurchaseGateUi(forceRebuild: true);
+            EnsurePreferredUiFonts();
+        }
+
+        private void EnsurePreferredUiFonts()
+        {
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            if (canvas == null)
+                return;
+
+            bool canvasChanged = false;
+            if (!canvas.pixelPerfect)
+            {
+                canvas.pixelPerfect = true;
+                canvasChanged = true;
+            }
+
+            TMP_FontAsset primaryFont = GetPrimaryUiFontAsset();
+            TMP_FontAsset displayFont = GetDisplayFontAsset();
+            if (primaryFont == null)
+                return;
+
+            TextMeshProUGUI[] labels = canvas.GetComponentsInChildren<TextMeshProUGUI>(true);
+            foreach (TextMeshProUGUI label in labels)
+            {
+                TMP_FontAsset desiredFont = ShouldUseDisplayFont(label) && displayFont != null
+                    ? displayFont
+                    : primaryFont;
+
+                bool changed = false;
+                if (label.font != desiredFont)
+                {
+                    label.font = desiredFont;
+                    changed = true;
+                }
+
+                Material sharedMaterial = desiredFont.material;
+                if (sharedMaterial != null && label.fontSharedMaterial != sharedMaterial)
+                {
+                    label.fontSharedMaterial = sharedMaterial;
+                    changed = true;
+                }
+
+                if (label.extraPadding)
+                {
+                    label.extraPadding = false;
+                    changed = true;
+                }
+
+                if (!label.isTextObjectScaleStatic)
+                {
+                    label.isTextObjectScaleStatic = true;
+                    changed = true;
+                }
+
+                if (!label.enableAutoSizing)
+                {
+                    float roundedFontSize = Mathf.Round(label.fontSize);
+                    if (!Mathf.Approximately(label.fontSize, roundedFontSize))
+                    {
+                        label.fontSize = roundedFontSize;
+                        changed = true;
+                    }
+                }
+
+                RectTransform rectTransform = label.rectTransform;
+                if (rectTransform != null)
+                {
+                    Vector2 anchoredPosition = rectTransform.anchoredPosition;
+                    Vector2 roundedAnchoredPosition = new(
+                        Mathf.Round(anchoredPosition.x),
+                        Mathf.Round(anchoredPosition.y));
+
+                    if ((roundedAnchoredPosition - anchoredPosition).sqrMagnitude > 0.0001f)
+                    {
+                        rectTransform.anchoredPosition = roundedAnchoredPosition;
+                        changed = true;
+                    }
+
+                    Vector2 sizeDelta = rectTransform.sizeDelta;
+                    Vector2 roundedSizeDelta = new(
+                        Mathf.Round(sizeDelta.x),
+                        Mathf.Round(sizeDelta.y));
+
+                    if ((roundedSizeDelta - sizeDelta).sqrMagnitude > 0.0001f)
+                    {
+                        rectTransform.sizeDelta = roundedSizeDelta;
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                {
+                    label.UpdateMeshPadding();
+                    label.ForceMeshUpdate();
+#if UNITY_EDITOR
+                    UnityEditor.EditorUtility.SetDirty(label);
+                    if (label.gameObject.scene.IsValid())
+                        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(label.gameObject.scene);
+#endif
+                }
+            }
+
+            if (canvasChanged)
+            {
+#if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(canvas);
+                if (canvas.gameObject.scene.IsValid())
+                    UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+#endif
+            }
+        }
+
+        private static TMP_FontAsset GetPrimaryUiFontAsset()
+        {
+            if (primaryUiFontAsset == null)
+                primaryUiFontAsset = Resources.Load<TMP_FontAsset>("Fonts & Materials/Octin College Rg SDF");
+
+            return primaryUiFontAsset != null ? primaryUiFontAsset : TMP_Settings.defaultFontAsset;
+        }
+
+        private static TMP_FontAsset GetDisplayFontAsset()
+        {
+            if (displayFontAsset == null)
+                displayFontAsset = Resources.Load<TMP_FontAsset>("Fonts & Materials/Sports World-Regular SDF");
+
+            return displayFontAsset;
+        }
+
+        private static bool ShouldUseDisplayFont(TextMeshProUGUI label)
+        {
+            if (label == null)
+                return false;
+
+            string objectName = label.gameObject.name;
+            string text = label.text ?? string.Empty;
+            return objectName.Contains("Game Title") ||
+                   text == "Arrows Game" ||
+                   text == "ARROWS Game";
+        }
+
+        private static void ApplyPreferredFont(TextMeshProUGUI label, bool useDisplayFont = false)
+        {
+            if (label == null)
+                return;
+
+            TMP_FontAsset fontAsset = useDisplayFont ? GetDisplayFontAsset() : GetPrimaryUiFontAsset();
+            if (fontAsset == null)
+                fontAsset = TMP_Settings.defaultFontAsset;
+
+            if (fontAsset == null)
+                return;
+
+            label.font = fontAsset;
+            if (fontAsset.material != null)
+                label.fontSharedMaterial = fontAsset.material;
+            label.extraPadding = false;
+            label.isTextObjectScaleStatic = true;
+            label.UpdateMeshPadding();
+            label.ForceMeshUpdate();
         }
 
         private void EnsureHomeShopUi(bool forceRebuild = false)
@@ -101,6 +276,15 @@ namespace ArrowGame
 
             if (shopButton == null)
                 BuildHomeShopButton(homePanel);
+
+            Transform leaderboardButton = FindDeepChild(homePanel, "Leaderboard Button");
+            if (forceRebuild && leaderboardButton != null)
+                DestroyEditorSafe(leaderboardButton.gameObject);
+
+            if (leaderboardButton == null)
+                BuildHomeLeaderboardButton(homePanel);
+
+            EnsureHomeActionButtonsLayout(homePanel);
 
             Transform shopPanel = FindDeepChild(canvas.transform, "Shop Panel");
             if (forceRebuild || NeedsShopUiRebuild(shopPanel))
@@ -154,13 +338,12 @@ namespace ArrowGame
             }
 
             Transform streakPanel = FindDeepChild(canvas.transform, "Challenge Streak Panel");
-            if (forceRebuild || streakPanel == null || FindDeepChild(streakPanel, "Day 7") == null)
-            {
-                if (streakPanel != null)
-                    DestroyEditorSafe(streakPanel.gameObject);
+            if (streakPanel != null)
+                DestroyEditorSafe(streakPanel.gameObject);
 
-                BuildStreakPanel(canvas.transform);
-            }
+            Transform streakButton = challengeMenuPanel != null ? FindDeepChild(challengeMenuPanel, "Streak Button") : null;
+            if (streakButton != null)
+                DestroyEditorSafe(streakButton.gameObject);
 
             ChallengeMenuReferences refs = CollectChallengeReferences(challengePanel, canvas.transform);
             if (!HasRequiredChallengeReferences(refs))
@@ -193,12 +376,86 @@ namespace ArrowGame
             if (settingsPanel == null)
                 return;
 
+            EnsureSettingsNameEditUi(settingsPanel, canvas.transform);
+
             SettingsMenuReferences refs = CollectSettingsReferences(settingsPanel);
             if (!HasRequiredSettingsReferences(refs))
                 return;
 
 #if UNITY_EDITOR
             AssignSettingsReferences(controller, refs);
+#endif
+
+#if UNITY_EDITOR
+            UnityEditor.EditorUtility.SetDirty(controller);
+            if (controller.gameObject.scene.IsValid())
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(controller.gameObject.scene);
+#endif
+        }
+
+        private void EnsurePurchaseGateUi(bool forceRebuild = false)
+        {
+            MenuSceneController controller = GetComponent<MenuSceneController>();
+            if (controller == null)
+                return;
+
+            Canvas canvas = FindFirstObjectByType<Canvas>();
+            if (canvas == null)
+                return;
+
+            EnsureEventSystem();
+
+            Transform purchaseGatePanel = FindDeepChild(canvas.transform, "Purchase Gate Panel");
+            if (forceRebuild || NeedsPurchaseGateUiRebuild(purchaseGatePanel))
+            {
+                if (purchaseGatePanel != null)
+                    DestroyEditorSafe(purchaseGatePanel.gameObject);
+
+                BuildPurchaseGatePanel(canvas.transform);
+            }
+
+            Transform purchaseSuccessPanel = FindDeepChild(canvas.transform, "Purchase Success Panel");
+            if (forceRebuild || NeedsPurchaseSuccessUiRebuild(purchaseSuccessPanel))
+            {
+                if (purchaseSuccessPanel != null)
+                    DestroyEditorSafe(purchaseSuccessPanel.gameObject);
+
+                BuildPurchaseSuccessPanel(canvas.transform);
+            }
+
+            Transform hintRewardPanel = FindDeepChild(canvas.transform, "Hint Reward Panel");
+            if (forceRebuild || NeedsHintRewardUiRebuild(hintRewardPanel))
+            {
+                if (hintRewardPanel != null)
+                    DestroyEditorSafe(hintRewardPanel.gameObject);
+
+                BuildHintRewardPanel(canvas.transform);
+            }
+
+            Transform paymentFailedPanel = FindDeepChild(canvas.transform, "Payment Failed Panel");
+            if (forceRebuild || NeedsPaymentFailedUiRebuild(paymentFailedPanel))
+            {
+                if (paymentFailedPanel != null)
+                    DestroyEditorSafe(paymentFailedPanel.gameObject);
+
+                BuildPaymentFailedPanel(canvas.transform);
+            }
+
+            Transform menuLeaderboardPanel = FindDeepChild(canvas.transform, "Menu Leaderboard Panel");
+            if (forceRebuild || NeedsMenuLeaderboardUiRebuild(menuLeaderboardPanel))
+            {
+                if (menuLeaderboardPanel != null)
+                    DestroyEditorSafe(menuLeaderboardPanel.gameObject);
+
+                BuildMenuLeaderboardPanel(canvas.transform);
+            }
+
+            PurchaseGateReferences refs = CollectPurchaseGateReferences(canvas.transform);
+            if (!HasRequiredPurchaseGateReferences(refs))
+                return;
+
+#if UNITY_EDITOR
+            AssignPurchaseGateReferences(controller, refs);
 #endif
 
 #if UNITY_EDITOR
@@ -217,7 +474,6 @@ namespace ArrowGame
                    FindDeepChild(challengeMenuPanel, "Challenge Text") == null ||
                    FindDeepChild(challengeMenuPanel, "Next Chance Timer") == null ||
                    FindDeepChild(challengeMenuPanel, "Status Text") == null ||
-                   FindDeepChild(challengeMenuPanel, "Streak Button") == null ||
                    FindDeepChild(challengeMenuPanel, "Play Challenge Button") == null;
         }
 
@@ -228,16 +484,75 @@ namespace ArrowGame
                    FindDeepChild(shopPanel, "Shop Header") == null ||
                    FindDeepChild(shopPanel, "Shop Close Button") == null ||
                    FindDeepChild(shopPanel, "Hint Offer Card") == null ||
-                   FindDeepChild(shopPanel, "Lives Offer Card") == null ||
-                   FindDeepChild(shopPanel, "Hint Buy Button") == null ||
-                   FindDeepChild(shopPanel, "Lives Buy Button") == null;
+                   FindDeepChild(shopPanel, "Hint Buy Button") == null;
+        }
+
+        private static bool NeedsPurchaseGateUiRebuild(Transform purchaseGatePanel)
+        {
+            return purchaseGatePanel == null ||
+                   FindDeepChild(purchaseGatePanel, "Purchase Gate Card") == null ||
+                   FindDeepChild(purchaseGatePanel, "Purchase Gate Title") == null ||
+                   FindDeepChild(purchaseGatePanel, "Purchase Gate Body") == null ||
+                   FindDeepChild(purchaseGatePanel, "Purchase Gate Price Text") == null ||
+                   FindDeepChild(purchaseGatePanel, "Purchase Gate Status Text") == null ||
+                   FindDeepChild(purchaseGatePanel, "Purchase Gate Pay Button") == null;
+        }
+
+        private static bool NeedsPurchaseSuccessUiRebuild(Transform purchaseSuccessPanel)
+        {
+            return purchaseSuccessPanel == null ||
+                   FindDeepChild(purchaseSuccessPanel, "Purchase Success Card") == null ||
+                   FindDeepChild(purchaseSuccessPanel, "Purchase Success Title") == null ||
+                   FindDeepChild(purchaseSuccessPanel, "Purchase Success Body") == null ||
+                   FindDeepChild(purchaseSuccessPanel, "Purchase Success Name Input") == null ||
+                   FindDeepChild(purchaseSuccessPanel, "Purchase Success OK Button") == null;
+        }
+
+        private static bool NeedsPaymentFailedUiRebuild(Transform paymentFailedPanel)
+        {
+            return paymentFailedPanel == null ||
+                   FindDeepChild(paymentFailedPanel, "Payment Failed Card") == null ||
+                   FindDeepChild(paymentFailedPanel, "Payment Failed Title") == null ||
+                   FindDeepChild(paymentFailedPanel, "Payment Failed Body") == null ||
+                   FindDeepChild(paymentFailedPanel, "Payment Failed Retry Button") == null;
+        }
+
+        private static bool NeedsHintRewardUiRebuild(Transform hintRewardPanel)
+        {
+            return hintRewardPanel == null ||
+                   FindDeepChild(hintRewardPanel, "Hint Reward Card") == null ||
+                   FindDeepChild(hintRewardPanel, "Hint Reward Title") == null ||
+                   FindDeepChild(hintRewardPanel, "Hint Reward Body") == null ||
+                   FindDeepChild(hintRewardPanel, "Hint Reward Status Text") == null ||
+                   FindDeepChild(hintRewardPanel, "Hint Reward OK Button") == null;
+        }
+
+        private static bool NeedsMenuLeaderboardUiRebuild(Transform leaderboardPanel)
+        {
+            return leaderboardPanel == null ||
+                   FindDeepChild(leaderboardPanel, "Menu Leaderboard Card") == null ||
+                   FindDeepChild(leaderboardPanel, "Menu Leaderboard Title") == null ||
+                   FindDeepChild(leaderboardPanel, "Menu Leaderboard List") == null ||
+                   FindDeepChild(leaderboardPanel, "Menu Leaderboard Scroll View") == null ||
+                   FindDeepChild(leaderboardPanel, "Menu Leaderboard Close Button") == null ||
+                   leaderboardPanel.GetComponentsInChildren<ChallengeLeaderboardEntryView>(true).Length < 25;
         }
 
         private void BuildHomeShopButton(Transform homePanel)
         {
+            BuildHomeActionButton(homePanel, "Shop Button", "Shop", new Color(0.95f, 0.68f, 0.15f, 1f));
+        }
+
+        private void BuildHomeLeaderboardButton(Transform homePanel)
+        {
+            BuildHomeActionButton(homePanel, "Leaderboard Button", "Leaderboard", new Color(0.35f, 0.43f, 0.98f, 1f));
+        }
+
+        private void BuildHomeActionButton(Transform homePanel, string buttonName, string label, Color backgroundColor)
+        {
             Transform playButton = FindDeepChild(homePanel, "Play Button");
             RectTransform playRect = playButton as RectTransform;
-            RectTransform buttonRect = CreateRect("Shop Button", homePanel);
+            RectTransform buttonRect = CreateRect(buttonName, homePanel);
             buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
             buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
             buttonRect.pivot = new Vector2(0.5f, 0.5f);
@@ -248,25 +563,82 @@ namespace ArrowGame
                 ? playRect.anchoredPosition + new Vector2(0f, -(buttonRect.sizeDelta.y + 44f))
                 : new Vector2(0f, -220f);
 
-            LayoutElement layout = buttonRect.gameObject.AddComponent<LayoutElement>();
-            layout.ignoreLayout = true;
+            LayoutElement layout = buttonRect.gameObject.GetComponent<LayoutElement>() ?? buttonRect.gameObject.AddComponent<LayoutElement>();
+            layout.ignoreLayout = false;
             layout.flexibleWidth = 1f;
             layout.preferredHeight = buttonRect.sizeDelta.y;
             layout.preferredWidth = buttonRect.sizeDelta.x;
 
-            Image image = EnsureImage(buttonRect.gameObject, new Color(0.95f, 0.68f, 0.15f, 1f), Image.Type.Sliced);
-            Button button = buttonRect.gameObject.AddComponent<Button>();
+            Image image = EnsureImage(buttonRect.gameObject, backgroundColor, Image.Type.Sliced);
+            Button button = buttonRect.gameObject.GetComponent<Button>() ?? buttonRect.gameObject.AddComponent<Button>();
             button.targetGraphic = image;
 
-            RectTransform shineRect = CreateRect("Top Shine", buttonRect);
+            RectTransform shineRect = FindDeepChild(buttonRect, "Top Shine") as RectTransform ?? CreateRect("Top Shine", buttonRect);
             shineRect.anchorMin = new Vector2(0.08f, 0.56f);
             shineRect.anchorMax = new Vector2(0.92f, 0.88f);
             shineRect.offsetMin = Vector2.zero;
             shineRect.offsetMax = Vector2.zero;
             EnsureImage(shineRect.gameObject, new Color(1f, 0.9f, 0.55f, 0.45f), Image.Type.Sliced);
 
-            CreateNamedLabel(buttonRect, "Label", "Shop", 34f, textPrimaryColor);
-            buttonRect.SetAsLastSibling();
+            TextMeshProUGUI buttonLabel = GetText(buttonRect, "Label");
+            if (buttonLabel == null)
+                CreateNamedLabel(buttonRect, "Label", label, 34f, textPrimaryColor);
+            else
+                buttonLabel.text = label;
+        }
+
+        private void EnsureHomeActionButtonsLayout(Transform homePanel)
+        {
+            RectTransform playRect = FindDeepChild(homePanel, "Play Button") as RectTransform;
+            if (playRect == null)
+                return;
+
+            RectTransform stack = FindDeepChild(homePanel, "Home Action Buttons") as RectTransform;
+            if (stack == null)
+            {
+                stack = CreateRect("Home Action Buttons", homePanel);
+                stack.anchorMin = new Vector2(0.5f, 0.5f);
+                stack.anchorMax = new Vector2(0.5f, 0.5f);
+                stack.pivot = new Vector2(0.5f, 0.5f);
+                stack.sizeDelta = new Vector2(playRect.rect.width > 0f ? playRect.rect.width : 925f, 0f);
+                stack.anchoredPosition = playRect.anchoredPosition;
+            }
+
+            VerticalLayoutGroup layout = stack.gameObject.GetComponent<VerticalLayoutGroup>() ?? stack.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(0, 0, 0, 0);
+            layout.spacing = 28f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = false;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            ContentSizeFitter fitter = stack.gameObject.GetComponent<ContentSizeFitter>() ?? stack.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            PrepareHomeActionButtonForLayout(playRect, stack);
+            PrepareHomeActionButtonForLayout(FindDeepChild(homePanel, "Shop Button") as RectTransform, stack);
+            PrepareHomeActionButtonForLayout(FindDeepChild(homePanel, "Leaderboard Button") as RectTransform, stack);
+        }
+
+        private static void PrepareHomeActionButtonForLayout(RectTransform buttonRect, RectTransform stack)
+        {
+            if (buttonRect == null || stack == null)
+                return;
+
+            buttonRect.SetParent(stack, false);
+            buttonRect.anchorMin = new Vector2(0.5f, 1f);
+            buttonRect.anchorMax = new Vector2(0.5f, 1f);
+            buttonRect.pivot = new Vector2(0.5f, 0.5f);
+            buttonRect.anchoredPosition = Vector2.zero;
+            buttonRect.localScale = Vector3.one;
+
+            LayoutElement layout = buttonRect.gameObject.GetComponent<LayoutElement>() ?? buttonRect.gameObject.AddComponent<LayoutElement>();
+            layout.ignoreLayout = false;
+            layout.flexibleWidth = 1f;
+            layout.preferredWidth = buttonRect.sizeDelta.x > 1f ? buttonRect.sizeDelta.x : 925f;
+            layout.preferredHeight = buttonRect.sizeDelta.y > 1f ? buttonRect.sizeDelta.y : 120f;
         }
 
         private void BuildShopPanel(Transform canvasRoot)
@@ -320,8 +692,297 @@ namespace ArrowGame
             offersLayout.childForceExpandWidth = true;
             offersLayout.childForceExpandHeight = false;
 
-            CreateShopOfferCard(offersRoot, "Hint", "H", "10 Hints", "$0.99");
-            CreateShopOfferCard(offersRoot, "Lives", "L", "3 Lives", "$1.99");
+            CreateShopOfferCard(offersRoot, "Hint", "H", "5 Hints", "$0.10");
+        }
+
+        private void BuildPurchaseGatePanel(Transform canvasRoot)
+        {
+            RectTransform overlay = CreateRect("Purchase Gate Panel", canvasRoot);
+            StretchRect(overlay);
+            EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.8f));
+            overlay.gameObject.SetActive(false);
+
+            RectTransform card = CreateRect("Purchase Gate Card", overlay);
+            card.anchorMin = new Vector2(0.5f, 0.5f);
+            card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(720f, 620f);
+            card.anchoredPosition = Vector2.zero;
+            EnsureImage(card.gameObject, Color.white, Image.Type.Sliced);
+
+            RectTransform titleRect = CreateRect("Purchase Gate Title", card);
+            titleRect.anchorMin = new Vector2(0.1f, 1f);
+            titleRect.anchorMax = new Vector2(0.9f, 1f);
+            titleRect.pivot = new Vector2(0.5f, 1f);
+            titleRect.sizeDelta = new Vector2(0f, 96f);
+            titleRect.anchoredPosition = new Vector2(0f, -42f);
+            CreateRectLabel(titleRect, "Unlock Arrow Out", 46f, new Color(0.16f, 0.18f, 0.3f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+
+            RectTransform bodyRect = CreateRect("Purchase Gate Body", card);
+            bodyRect.anchorMin = new Vector2(0.12f, 0.46f);
+            bodyRect.anchorMax = new Vector2(0.88f, 0.74f);
+            bodyRect.offsetMin = Vector2.zero;
+            bodyRect.offsetMax = Vector2.zero;
+            CreateRectLabel(bodyRect, "Finish the tutorial, then pay once in MiniPay to unlock the full game.", 29f, new Color(0.28f, 0.31f, 0.48f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+
+            RectTransform priceBadge = CreateRect("Purchase Gate Price Badge", card);
+            priceBadge.anchorMin = new Vector2(0.5f, 0.5f);
+            priceBadge.anchorMax = new Vector2(0.5f, 0.5f);
+            priceBadge.pivot = new Vector2(0.5f, 0.5f);
+            priceBadge.sizeDelta = new Vector2(260f, 100f);
+            priceBadge.anchoredPosition = new Vector2(0f, 16f);
+            EnsureImage(priceBadge.gameObject, new Color(0.95f, 0.68f, 0.15f, 1f), Image.Type.Sliced);
+
+            RectTransform priceTextRect = CreateRect("Purchase Gate Price Text", priceBadge);
+            StretchRect(priceTextRect);
+            CreateRectLabel(priceTextRect, "$0.50", 42f, Color.white, TextAlignmentOptions.Center);
+
+            RectTransform statusRect = CreateRect("Purchase Gate Status Text", card);
+            statusRect.anchorMin = new Vector2(0.12f, 0.22f);
+            statusRect.anchorMax = new Vector2(0.88f, 0.34f);
+            statusRect.offsetMin = Vector2.zero;
+            statusRect.offsetMax = Vector2.zero;
+            CreateRectLabel(statusRect, "Complete the payment to continue into the main game.", 24f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+
+            RectTransform buttonRect = CreateRect("Purchase Gate Pay Button", card);
+            buttonRect.anchorMin = new Vector2(0.5f, 0f);
+            buttonRect.anchorMax = new Vector2(0.5f, 0f);
+            buttonRect.pivot = new Vector2(0.5f, 0f);
+            buttonRect.sizeDelta = new Vector2(340f, 96f);
+            buttonRect.anchoredPosition = new Vector2(0f, 42f);
+            Image buttonImage = EnsureImage(buttonRect.gameObject, accentColor, Image.Type.Sliced);
+            Button payButton = buttonRect.gameObject.AddComponent<Button>();
+            payButton.targetGraphic = buttonImage;
+
+            RectTransform buttonLabelRect = CreateRect("Label", buttonRect);
+            StretchRect(buttonLabelRect);
+            CreateRectLabel(buttonLabelRect, "Pay", 34f, Color.white, TextAlignmentOptions.Center);
+        }
+
+        private void BuildPurchaseSuccessPanel(Transform canvasRoot)
+        {
+            RectTransform overlay = CreateRect("Purchase Success Panel", canvasRoot);
+            StretchRect(overlay);
+            EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.8f));
+            overlay.gameObject.SetActive(false);
+
+            RectTransform card = CreateRect("Purchase Success Card", overlay);
+            card.anchorMin = new Vector2(0.5f, 0.5f);
+            card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(760f, 660f);
+            card.anchoredPosition = Vector2.zero;
+            EnsureImage(card.gameObject, Color.white, Image.Type.Sliced);
+
+            VerticalLayoutGroup layout = card.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(52, 52, 52, 52);
+            layout.spacing = 18f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+
+            CreateStandaloneLabel(card, "Purchase Success Title", "Payment Successful", 44f, new Color(0.16f, 0.18f, 0.3f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateStandaloneLabel(card, "Purchase Success Body", "Welcome to Arrow Out. Enter your player name to continue.", 28f, new Color(0.28f, 0.31f, 0.48f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateInputField(card, "Purchase Success Name Input", "Enter your name");
+            CreateStandaloneLabel(card, "Purchase Success Status Text", "Your name will be saved to MiniPay.", 22f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+
+            Button okButton = CreateButton(card, "Purchase Success OK", new Vector2(0f, 92f));
+            okButton.gameObject.name = "Purchase Success OK Button";
+            TextMeshProUGUI okLabel = GetText(okButton.transform, "Label");
+            if (okLabel != null)
+                okLabel.text = "OK";
+        }
+
+        private void BuildHintRewardPanel(Transform canvasRoot)
+        {
+            RectTransform overlay = CreateRect("Hint Reward Panel", canvasRoot);
+            StretchRect(overlay);
+            EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.8f));
+            overlay.gameObject.SetActive(false);
+
+            RectTransform card = CreateRect("Hint Reward Card", overlay);
+            card.anchorMin = new Vector2(0.5f, 0.5f);
+            card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(760f, 520f);
+            card.anchoredPosition = Vector2.zero;
+            EnsureImage(card.gameObject, Color.white, Image.Type.Sliced);
+
+            VerticalLayoutGroup layout = card.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(52, 52, 52, 52);
+            layout.spacing = 18f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+
+            CreateStandaloneLabel(card, "Hint Reward Title", "Free Hints Unlocked", 44f, new Color(0.16f, 0.18f, 0.3f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateStandaloneLabel(card, "Hint Reward Body", "Congrats! You received 5 free hints with your unlock purchase.", 28f, new Color(0.28f, 0.31f, 0.48f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateStandaloneLabel(card, "Hint Reward Status Text", "These hints are saved to your MiniPay account.", 22f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+
+            Button okButton = CreateButton(card, "Hint Reward OK", new Vector2(0f, 92f));
+            okButton.gameObject.name = "Hint Reward OK Button";
+            TextMeshProUGUI okLabel = GetText(okButton.transform, "Label");
+            if (okLabel != null)
+                okLabel.text = "OK";
+        }
+
+        private void BuildPaymentFailedPanel(Transform canvasRoot)
+        {
+            RectTransform overlay = CreateRect("Payment Failed Panel", canvasRoot);
+            StretchRect(overlay);
+            EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.8f));
+            overlay.gameObject.SetActive(false);
+
+            RectTransform card = CreateRect("Payment Failed Card", overlay);
+            card.anchorMin = new Vector2(0.5f, 0.5f);
+            card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(720f, 520f);
+            card.anchoredPosition = Vector2.zero;
+            EnsureImage(card.gameObject, Color.white, Image.Type.Sliced);
+
+            VerticalLayoutGroup layout = card.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(52, 52, 52, 52);
+            layout.spacing = 18f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+
+            CreateStandaloneLabel(card, "Payment Failed Title", "Payment Failed", 44f, new Color(0.16f, 0.18f, 0.3f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateStandaloneLabel(card, "Payment Failed Body", "Payment failed. Please try again.", 28f, new Color(0.28f, 0.31f, 0.48f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+
+            Button retryButton = CreateButton(card, "Payment Failed Retry", new Vector2(0f, 92f));
+            retryButton.gameObject.name = "Payment Failed Retry Button";
+            TextMeshProUGUI retryLabel = GetText(retryButton.transform, "Label");
+            if (retryLabel != null)
+                retryLabel.text = "Retry";
+        }
+
+        private void BuildMenuLeaderboardPanel(Transform canvasRoot)
+        {
+            RectTransform overlay = CreateRect("Menu Leaderboard Panel", canvasRoot);
+            StretchRect(overlay);
+            EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.8f));
+            overlay.gameObject.SetActive(false);
+
+            RectTransform card = CreateRect("Menu Leaderboard Card", overlay);
+            card.anchorMin = new Vector2(0.5f, 0.5f);
+            card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(860f, 1120f);
+            card.anchoredPosition = Vector2.zero;
+            EnsureImage(card.gameObject, cardColor, Image.Type.Sliced);
+
+            VerticalLayoutGroup layout = card.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(44, 44, 44, 44);
+            layout.spacing = 18f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+
+            CreateStandaloneLabel(card, "Menu Leaderboard Title", "Weekly Challenge Leaderboard", 42f, textPrimaryColor, TextAlignmentOptions.Center);
+            CreateStandaloneLabel(card, "Menu Leaderboard Best Text", "Your Best: Not set yet", 26f, textSecondaryColor, TextAlignmentOptions.Center);
+
+            RectTransform scrollRoot = CreateRect("Menu Leaderboard Scroll View", card);
+            LayoutElement scrollLayout = scrollRoot.gameObject.AddComponent<LayoutElement>();
+            scrollLayout.flexibleHeight = 1f;
+            scrollLayout.preferredHeight = 720f;
+            Image scrollBackground = EnsureImage(scrollRoot.gameObject, new Color(1f, 1f, 1f, 0.02f));
+
+            ScrollRect scrollRect = scrollRoot.gameObject.AddComponent<ScrollRect>();
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.scrollSensitivity = 24f;
+
+            RectTransform viewport = CreateRect("Menu Leaderboard Viewport", scrollRoot);
+            StretchRect(viewport);
+            EnsureImage(viewport.gameObject, new Color(1f, 1f, 1f, 0.01f));
+            viewport.gameObject.AddComponent<RectMask2D>();
+
+            RectTransform listRoot = CreateRect("Menu Leaderboard List", viewport);
+            listRoot.anchorMin = new Vector2(0f, 1f);
+            listRoot.anchorMax = new Vector2(1f, 1f);
+            listRoot.pivot = new Vector2(0.5f, 1f);
+            listRoot.anchoredPosition = Vector2.zero;
+            listRoot.sizeDelta = Vector2.zero;
+
+            VerticalLayoutGroup listLayout = listRoot.gameObject.AddComponent<VerticalLayoutGroup>();
+            listLayout.padding = new RectOffset(0, 0, 0, 0);
+            listLayout.spacing = 12f;
+            listLayout.childAlignment = TextAnchor.UpperCenter;
+            listLayout.childControlWidth = true;
+            listLayout.childControlHeight = false;
+            listLayout.childForceExpandWidth = true;
+            listLayout.childForceExpandHeight = false;
+            ContentSizeFitter listFitter = listRoot.gameObject.AddComponent<ContentSizeFitter>();
+            listFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            listFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scrollRect.viewport = viewport;
+            scrollRect.content = listRoot;
+
+            for (int i = 0; i < 25; i++)
+                CreateMenuLeaderboardEntry(listRoot, i);
+
+            RectTransform bottomSpacer = CreateRect("Menu Leaderboard Bottom Spacer", card);
+            LayoutElement spacerLayout = bottomSpacer.gameObject.GetComponent<LayoutElement>() ?? bottomSpacer.gameObject.AddComponent<LayoutElement>();
+            spacerLayout.flexibleHeight = 1f;
+            spacerLayout.minHeight = 24f;
+            spacerLayout.preferredHeight = 24f;
+
+            Button closeButton = CreateButton(card, "Menu Leaderboard Close", new Vector2(0f, 80f));
+            closeButton.gameObject.name = "Menu Leaderboard Close Button";
+            TextMeshProUGUI closeLabel = GetText(closeButton.transform, "Label");
+            if (closeLabel != null)
+                closeLabel.text = "Close";
+        }
+
+        private ChallengeLeaderboardEntryView CreateMenuLeaderboardEntry(Transform parent, int index)
+        {
+            RectTransform root = CreateRect($"Menu Leaderboard Entry {index + 1}", parent);
+            LayoutElement rootLayout = root.gameObject.AddComponent<LayoutElement>();
+            rootLayout.preferredHeight = 120f;
+            rootLayout.flexibleWidth = 1f;
+
+            Image rootImage = EnsureImage(root.gameObject, new Color(0.17f, 0.18f, 0.29f, 0.94f), Image.Type.Sliced);
+
+            HorizontalLayoutGroup layout = root.gameObject.AddComponent<HorizontalLayoutGroup>();
+            layout.padding = new RectOffset(28, 28, 18, 18);
+            layout.spacing = 16f;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = false;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            TextMeshProUGUI rankText = CreateStandaloneLabel(root, "Rank Text", $"{index + 1}", 34f, textPrimaryColor, TextAlignmentOptions.Center);
+            rankText.rectTransform.sizeDelta = new Vector2(90f, 84f);
+            TextMeshProUGUI nameText = CreateStandaloneLabel(root, "Name Text", $"Player {index + 1}", 30f, textPrimaryColor, TextAlignmentOptions.Left);
+            nameText.rectTransform.sizeDelta = new Vector2(320f, 84f);
+            TextMeshProUGUI timeText = CreateStandaloneLabel(root, "Time Text", "00:00.000", 30f, textPrimaryColor, TextAlignmentOptions.Right);
+            timeText.rectTransform.sizeDelta = new Vector2(220f, 84f);
+
+            GameObject firstBadge = CreateMarker(root, "First Place Badge", "1", 28f, Color.white);
+            GameObject secondBadge = CreateMarker(root, "Second Place Badge", "2", 28f, Color.white);
+            GameObject thirdBadge = CreateMarker(root, "Third Place Badge", "3", 28f, Color.white);
+            firstBadge.SetActive(false);
+            secondBadge.SetActive(false);
+            thirdBadge.SetActive(false);
+
+            ChallengeLeaderboardEntryView view = root.gameObject.AddComponent<ChallengeLeaderboardEntryView>();
+
+#if UNITY_EDITOR
+            AssignLeaderboardEntryView(view, root.gameObject, rootImage, rankText, nameText, timeText, firstBadge, secondBadge, thirdBadge);
+#endif
+            return view;
         }
 
         private void CreateShopOfferCard(Transform parent, string prefix, string iconLabel, string amountText, string priceText)
@@ -401,88 +1062,7 @@ namespace ArrowGame
             CreateNamedLabel(card, "Challenge Text", "1 chance left", 28f, textPrimaryColor);
             CreateNamedLabel(card, "Next Chance Timer", "Chance Ready", 24f, textSecondaryColor);
             CreateNamedLabel(card, "Status Text", "You have 1 chance available today.", 24f, textSecondaryColor);
-            CreateButton(card, "Streak", new Vector2(0f, 76f));
             CreateButton(card, "Play Challenge", new Vector2(0f, 88f));
-        }
-
-        private void BuildStreakPanel(Transform canvasRoot)
-        {
-            RectTransform overlay = CreateRect("Challenge Streak Panel", canvasRoot);
-            StretchRect(overlay);
-            Image overlayImage = EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.72f));
-
-            RectTransform card = CreateRect("Streak Popup Card", overlay);
-            card.anchorMin = new Vector2(0.5f, 0.5f);
-            card.anchorMax = new Vector2(0.5f, 0.5f);
-            card.pivot = new Vector2(0.5f, 0.5f);
-            card.sizeDelta = new Vector2(760f, 1040f);
-            card.anchoredPosition = Vector2.zero;
-
-            Image cardImage = EnsureImage(card.gameObject, Color.white, Image.Type.Sliced);
-
-            VerticalLayoutGroup cardLayout = card.gameObject.AddComponent<VerticalLayoutGroup>();
-            cardLayout.padding = new RectOffset(56, 56, 72, 72);
-            cardLayout.spacing = 22f;
-            cardLayout.childAlignment = TextAnchor.UpperCenter;
-            cardLayout.childControlWidth = true;
-            cardLayout.childControlHeight = false;
-            cardLayout.childForceExpandWidth = true;
-            cardLayout.childForceExpandHeight = false;
-
-            RectTransform flame = CreateRect("Flame", card);
-            flame.sizeDelta = new Vector2(210f, 210f);
-            Image flameImage = EnsureImage(flame.gameObject, new Color(1f, 0.63f, 0.12f, 1f), Image.Type.Sliced);
-
-            CreateNamedLabel(card, "Streak Headline", "0 day streak", 52f, new Color(0.2f, 0.24f, 0.42f, 1f));
-
-            RectTransform dayRow = CreateRect("Streak Day Row", card);
-            dayRow.sizeDelta = new Vector2(0f, 160f);
-            HorizontalLayoutGroup dayRowLayout = dayRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-            dayRowLayout.spacing = 10f;
-            dayRowLayout.childAlignment = TextAnchor.MiddleCenter;
-            dayRowLayout.childControlWidth = true;
-            dayRowLayout.childControlHeight = true;
-            dayRowLayout.childForceExpandWidth = true;
-            dayRowLayout.childForceExpandHeight = false;
-
-            for (int i = 0; i < 7; i++)
-            {
-                RectTransform dayItem = CreateRect($"Day {i + 1}", dayRow);
-                LayoutElement dayLayout = dayItem.gameObject.AddComponent<LayoutElement>();
-                dayLayout.preferredWidth = 90f;
-                dayLayout.preferredHeight = 130f;
-
-                VerticalLayoutGroup dayLayoutGroup = dayItem.gameObject.AddComponent<VerticalLayoutGroup>();
-                dayLayoutGroup.spacing = 10f;
-                dayLayoutGroup.childAlignment = TextAnchor.MiddleCenter;
-                dayLayoutGroup.childControlWidth = true;
-                dayLayoutGroup.childControlHeight = false;
-                dayLayoutGroup.childForceExpandWidth = true;
-                dayLayoutGroup.childForceExpandHeight = false;
-
-                string dayShortName = i switch { 0 => "Mo", 1 => "Tu", 2 => "We", 3 => "Th", 4 => "Fr", 5 => "Sa", _ => "Su" };
-                TextMeshProUGUI dayLabel = CreateNamedLabel(dayItem, "Day Label", dayShortName, 22f, textSecondaryColor);
-
-                RectTransform dayBubble = CreateRect("Day Bubble", dayItem);
-                dayBubble.sizeDelta = new Vector2(72f, 72f);
-                Image dayBubbleImage = EnsureImage(dayBubble.gameObject, new Color(0.93f, 0.93f, 0.98f, 1f), Image.Type.Sliced);
-
-                TextMeshProUGUI stateLabel = CreateNamedLabel(dayBubble, "State Label", "Today", 16f, new Color(0.28f, 0.31f, 0.48f, 1f));
-                GameObject playedMarker = CreateMarker(dayBubble, "Played Marker", "OK", 20f, Color.white);
-                GameObject currentMarker = CreateMarker(dayBubble, "Current Marker", "Now", 16f, Color.white);
-                playedMarker.SetActive(false);
-                currentMarker.SetActive(false);
-
-                ChallengeStreakDayView view = dayItem.gameObject.AddComponent<ChallengeStreakDayView>();
-                AssignStreakDayView(view, dayBubbleImage, dayLabel, stateLabel, playedMarker, currentMarker);
-            }
-
-            CreateNamedLabel(card, "Streak Summary", "Win a level to start your streak!", 26f, new Color(0.28f, 0.31f, 0.48f, 1f));
-            RectTransform spacer = CreateRect("Bottom Spacer", card);
-            LayoutElement spacerLayout = spacer.gameObject.AddComponent<LayoutElement>();
-            spacerLayout.flexibleHeight = 1f;
-            spacerLayout.minHeight = 40f;
-            CreateButton(card, "Close", new Vector2(0f, 82f));
         }
 
         private void BuildSettingsPanel(Transform settingsPanel)
@@ -518,14 +1098,105 @@ namespace ArrowGame
             CreateLinkRow(linksCard, "Twitter");
         }
 
+        private void EnsureSettingsNameEditUi(Transform settingsPanel, Transform canvasRoot)
+        {
+            TMP_InputField userNameInputField = GetInputField(settingsPanel, "Username Input Field");
+            if (userNameInputField != null)
+            {
+                userNameInputField.readOnly = true;
+                EnsureUsernameEditButton(userNameInputField.transform as RectTransform);
+            }
+
+            Transform existingPanel = FindDeepChild(canvasRoot, "Username Edit Panel");
+            if (existingPanel == null)
+                BuildUsernameEditPanel(canvasRoot);
+        }
+
+        private void EnsureUsernameEditButton(RectTransform inputRoot)
+        {
+            if (inputRoot == null)
+                return;
+
+            RectTransform buttonRect = GetRect(inputRoot, "Username Edit Button");
+            if (buttonRect == null)
+            {
+                buttonRect = CreateRect("Username Edit Button", inputRoot);
+                StretchRect(buttonRect);
+                Image buttonImage = EnsureImage(buttonRect.gameObject, new Color(1f, 1f, 1f, 0.01f));
+                Button button = buttonRect.gameObject.AddComponent<Button>();
+                button.targetGraphic = buttonImage;
+            }
+
+            RectTransform iconRect = GetRect(inputRoot, "Username Edit Pencil");
+            if (iconRect == null)
+            {
+                iconRect = CreateRect("Username Edit Pencil", inputRoot);
+                iconRect.anchorMin = new Vector2(1f, 0.5f);
+                iconRect.anchorMax = new Vector2(1f, 0.5f);
+                iconRect.pivot = new Vector2(1f, 0.5f);
+                iconRect.sizeDelta = new Vector2(40f, 40f);
+                iconRect.anchoredPosition = new Vector2(-16f, 0f);
+                CreateRectLabel(iconRect, "✏", 28f, textSecondaryColor, TextAlignmentOptions.Center);
+            }
+        }
+
+        private void BuildUsernameEditPanel(Transform canvasRoot)
+        {
+            RectTransform overlay = CreateRect("Username Edit Panel", canvasRoot);
+            StretchRect(overlay);
+            EnsureImage(overlay.gameObject, new Color(0.04f, 0.05f, 0.08f, 0.8f));
+            overlay.gameObject.SetActive(false);
+
+            RectTransform card = CreateRect("Username Edit Card", overlay);
+            card.anchorMin = new Vector2(0.5f, 0.5f);
+            card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(760f, 520f);
+            card.anchoredPosition = Vector2.zero;
+            EnsureImage(card.gameObject, Color.white, Image.Type.Sliced);
+
+            VerticalLayoutGroup layout = card.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(52, 52, 52, 52);
+            layout.spacing = 18f;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+
+            CreateStandaloneLabel(card, "Username Edit Title", "Change Your Name", 42f, new Color(0.16f, 0.18f, 0.3f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateStandaloneLabel(card, "Username Edit Status", "Enter a new name and save it to your MiniPay profile.", 24f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateInputField(card, "Username Edit Input Field", "Enter your name");
+
+            RectTransform buttonRow = CreateRect("Username Edit Button Row", card);
+            LayoutElement rowLayout = buttonRow.gameObject.AddComponent<LayoutElement>();
+            rowLayout.preferredHeight = 92f;
+            HorizontalLayoutGroup row = buttonRow.gameObject.AddComponent<HorizontalLayoutGroup>();
+            row.spacing = 24f;
+            row.childAlignment = TextAnchor.MiddleCenter;
+            row.childControlWidth = false;
+            row.childControlHeight = true;
+            row.childForceExpandWidth = false;
+            row.childForceExpandHeight = false;
+
+            Button cancelButton = CreateButton(buttonRow, "Cancel", new Vector2(220f, 84f));
+            cancelButton.gameObject.name = "Username Edit Cancel Button";
+            TextMeshProUGUI cancelLabel = GetText(cancelButton.transform, "Label");
+            if (cancelLabel != null)
+                cancelLabel.text = "Cancel";
+
+            Button saveButton = CreateButton(buttonRow, "Save", new Vector2(220f, 84f));
+            saveButton.gameObject.name = "Username Edit Save Button";
+            TextMeshProUGUI saveLabel = GetText(saveButton.transform, "Label");
+            if (saveLabel != null)
+                saveLabel.text = "Save";
+        }
+
         private ChallengeMenuReferences CollectChallengeReferences(Transform challengePanel, Transform canvasRoot)
         {
             ChallengeMenuReferences refs = new();
             Transform menuPanel = challengePanel.Find("Challenge Menu Panel") ?? FindDeepChild(challengePanel, "Challenge Menu Panel");
             Transform card = menuPanel != null ? FindDeepChild(menuPanel, "Challenge Card") : null;
-            Transform streakPanel = FindDeepChild(canvasRoot, "Challenge Streak Panel");
-            Transform streakCard = streakPanel != null ? FindDeepChild(streakPanel, "Streak Popup Card") : null;
-            Transform dayRow = streakCard != null ? FindDeepChild(streakCard, "Streak Day Row") : null;
 
             refs.titleText = GetText(card, "Challenge Title");
             refs.patternNameText = GetText(card, "Pattern Name");
@@ -533,20 +1204,7 @@ namespace ArrowGame
             refs.chanceText = GetText(card, "Challenge Text");
             refs.nextChanceTimerText = GetText(card, "Next Chance Timer");
             refs.statusText = GetText(card, "Status Text");
-            refs.streakButton = GetButton(card, "Streak Button");
             refs.challengePlayButton = GetButton(card, "Play Challenge Button");
-            refs.streakPanel = streakPanel != null ? streakPanel.gameObject : null;
-            refs.closeStreakButton = GetButton(streakCard, "Close Button");
-            refs.streakHeadlineText = GetText(streakCard, "Streak Headline");
-            refs.streakSummaryText = GetText(streakCard, "Streak Summary");
-            refs.streakDayViews = new ChallengeStreakDayView[7];
-
-            for (int i = 0; i < refs.streakDayViews.Length; i++)
-            {
-                Transform dayItem = dayRow != null ? FindDeepChild(dayRow, $"Day {i + 1}") : null;
-                refs.streakDayViews[i] = dayItem != null ? dayItem.GetComponent<ChallengeStreakDayView>() : null;
-            }
-
             return refs;
         }
 
@@ -557,6 +1215,7 @@ namespace ArrowGame
                 return refs;
 
             refs.userNameInputField = settingsPanel.GetComponentInChildren<TMP_InputField>(true);
+            refs.userNameEditButton = GetButton(settingsPanel, "Username Edit Button");
             refs.vibrationToggleButton = FindButtonByKeywords(settingsPanel, "vibration", "vibrations");
             refs.vibrationToggleBackground = FindButtonBackground(refs.vibrationToggleButton);
             refs.vibrationToggleKnob = FindToggleKnob(refs.vibrationToggleButton);
@@ -571,6 +1230,13 @@ namespace ArrowGame
             refs.faqButton = FindButtonByKeywords(settingsPanel, "faq");
             refs.telegramButton = FindButtonByKeywords(settingsPanel, "telegram");
             refs.twitterButton = FindButtonByKeywords(settingsPanel, "twitter");
+            Transform canvasRoot = settingsPanel.root;
+            refs.userNameEditPanel = FindDeepChild(canvasRoot, "Username Edit Panel")?.gameObject;
+            refs.userNameEditInputField = GetInputField(canvasRoot, "Username Edit Input Field");
+            refs.userNameEditSaveButton = GetButton(canvasRoot, "Username Edit Save Button");
+            refs.userNameEditCancelButton = GetButton(canvasRoot, "Username Edit Cancel Button");
+            refs.userNameEditTitleText = GetText(canvasRoot, "Username Edit Title");
+            refs.userNameEditStatusText = GetText(canvasRoot, "Username Edit Status");
 
             List<Image> surfaceImages = new();
             AddIfNotNull(surfaceImages, settingsPanel.GetComponent<Image>());
@@ -591,24 +1257,43 @@ namespace ArrowGame
             return refs;
         }
 
+        private PurchaseGateReferences CollectPurchaseGateReferences(Transform canvasRoot)
+        {
+            PurchaseGateReferences refs = new();
+            Transform panel = FindDeepChild(canvasRoot, "Purchase Gate Panel");
+            Transform card = panel != null ? FindDeepChild(panel, "Purchase Gate Card") : null;
+            refs.panel = panel != null ? panel.gameObject : null;
+            refs.payButton = GetButton(card, "Purchase Gate Pay Button");
+            refs.titleText = GetText(card, "Purchase Gate Title");
+            refs.bodyText = GetText(card, "Purchase Gate Body");
+            refs.priceText = GetText(card, "Purchase Gate Price Text");
+            refs.statusText = GetText(card, "Purchase Gate Status Text");
+            return refs;
+        }
+
         private static bool HasRequiredChallengeReferences(ChallengeMenuReferences refs)
         {
-            if (refs == null || refs.titleText == null || refs.patternNameText == null || refs.cycleTimerText == null || refs.chanceText == null || refs.nextChanceTimerText == null || refs.statusText == null || refs.streakButton == null || refs.challengePlayButton == null || refs.streakPanel == null || refs.closeStreakButton == null || refs.streakHeadlineText == null || refs.streakSummaryText == null || refs.streakDayViews == null || refs.streakDayViews.Length < 7)
-                return false;
-
-            for (int i = 0; i < 7; i++)
-            {
-                if (refs.streakDayViews[i] == null)
-                    return false;
-            }
-
-            return true;
+            return refs != null &&
+                   refs.titleText != null &&
+                   refs.patternNameText != null &&
+                   refs.cycleTimerText != null &&
+                   refs.chanceText != null &&
+                   refs.nextChanceTimerText != null &&
+                   refs.statusText != null &&
+                   refs.challengePlayButton != null;
         }
 
         private static bool HasRequiredSettingsReferences(SettingsMenuReferences refs)
         {
             return refs != null &&
                    refs.userNameInputField != null &&
+                   refs.userNameEditButton != null &&
+                   refs.userNameEditPanel != null &&
+                   refs.userNameEditInputField != null &&
+                   refs.userNameEditSaveButton != null &&
+                   refs.userNameEditCancelButton != null &&
+                   refs.userNameEditTitleText != null &&
+                   refs.userNameEditStatusText != null &&
                    refs.vibrationToggleButton != null &&
                    refs.vibrationToggleBackground != null &&
                    refs.vibrationToggleKnob != null &&
@@ -625,6 +1310,17 @@ namespace ArrowGame
                    refs.twitterButton != null;
         }
 
+        private static bool HasRequiredPurchaseGateReferences(PurchaseGateReferences refs)
+        {
+            return refs != null &&
+                   refs.panel != null &&
+                   refs.payButton != null &&
+                   refs.titleText != null &&
+                   refs.bodyText != null &&
+                   refs.priceText != null &&
+                   refs.statusText != null;
+        }
+
 #if UNITY_EDITOR
         private static void AssignChallengeReferences(MenuSceneController controller, ChallengeMenuReferences refs)
         {
@@ -635,13 +1331,7 @@ namespace ArrowGame
             SerializedReferenceUtility.Assign(so, "challengeChanceText", refs.chanceText);
             SerializedReferenceUtility.Assign(so, "challengeNextChanceTimerText", refs.nextChanceTimerText);
             SerializedReferenceUtility.Assign(so, "challengeStatusText", refs.statusText);
-            SerializedReferenceUtility.Assign(so, "streakButton", refs.streakButton);
             SerializedReferenceUtility.Assign(so, "challengePlayButton", refs.challengePlayButton);
-            SerializedReferenceUtility.Assign(so, "streakPanel", refs.streakPanel);
-            SerializedReferenceUtility.Assign(so, "closeStreakButton", refs.closeStreakButton);
-            SerializedReferenceUtility.Assign(so, "streakHeadlineText", refs.streakHeadlineText);
-            SerializedReferenceUtility.Assign(so, "streakSummaryText", refs.streakSummaryText);
-            SerializedReferenceUtility.AssignArray(so, "streakDayViews", refs.streakDayViews);
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -649,6 +1339,13 @@ namespace ArrowGame
         {
             UnityEditor.SerializedObject so = new(controller);
             SerializedReferenceUtility.Assign(so, "userNameInputField", refs.userNameInputField);
+            SerializedReferenceUtility.Assign(so, "userNameEditButton", refs.userNameEditButton);
+            SerializedReferenceUtility.Assign(so, "userNameEditPanel", refs.userNameEditPanel);
+            SerializedReferenceUtility.Assign(so, "userNameEditInputField", refs.userNameEditInputField);
+            SerializedReferenceUtility.Assign(so, "userNameEditSaveButton", refs.userNameEditSaveButton);
+            SerializedReferenceUtility.Assign(so, "userNameEditCancelButton", refs.userNameEditCancelButton);
+            SerializedReferenceUtility.Assign(so, "userNameEditTitleText", refs.userNameEditTitleText);
+            SerializedReferenceUtility.Assign(so, "userNameEditStatusText", refs.userNameEditStatusText);
             SerializedReferenceUtility.Assign(so, "vibrationToggleButton", refs.vibrationToggleButton);
             SerializedReferenceUtility.Assign(so, "vibrationToggleBackground", refs.vibrationToggleBackground);
             SerializedReferenceUtility.Assign(so, "vibrationToggleKnob", refs.vibrationToggleKnob);
@@ -667,6 +1364,18 @@ namespace ArrowGame
             SerializedReferenceUtility.AssignArray(so, "themeAccentImages", refs.themeAccentImages);
             SerializedReferenceUtility.AssignArray(so, "themePrimaryTexts", refs.themePrimaryTexts);
             SerializedReferenceUtility.AssignArray(so, "themeSecondaryTexts", refs.themeSecondaryTexts);
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void AssignPurchaseGateReferences(MenuSceneController controller, PurchaseGateReferences refs)
+        {
+            UnityEditor.SerializedObject so = new(controller);
+            SerializedReferenceUtility.Assign(so, "purchaseGatePanel", refs.panel);
+            SerializedReferenceUtility.Assign(so, "purchaseGatePayButton", refs.payButton);
+            SerializedReferenceUtility.Assign(so, "purchaseGateTitleText", refs.titleText);
+            SerializedReferenceUtility.Assign(so, "purchaseGateBodyText", refs.bodyText);
+            SerializedReferenceUtility.Assign(so, "purchaseGatePriceText", refs.priceText);
+            SerializedReferenceUtility.Assign(so, "purchaseGateStatusText", refs.statusText);
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 #endif
@@ -820,8 +1529,7 @@ namespace ArrowGame
             label.alignment = TextAlignmentOptions.Center;
             label.raycastTarget = false;
             label.textWrappingMode = TextWrappingModes.Normal;
-            if (TMP_Settings.defaultFontAsset != null)
-                label.font = TMP_Settings.defaultFontAsset;
+            ApplyPreferredFont(label);
             ContentSizeFitter fitter = rect.gameObject.AddComponent<ContentSizeFitter>();
             fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
             fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
@@ -845,8 +1553,7 @@ namespace ArrowGame
             label.raycastTarget = false;
             label.textWrappingMode = TextWrappingModes.NoWrap;
             label.overflowMode = TextOverflowModes.Ellipsis;
-            if (TMP_Settings.defaultFontAsset != null)
-                label.font = TMP_Settings.defaultFontAsset;
+            ApplyPreferredFont(label);
             return label;
         }
 
@@ -860,21 +1567,32 @@ namespace ArrowGame
             label.color = color;
             label.alignment = TextAlignmentOptions.Center;
             label.raycastTarget = false;
-            if (TMP_Settings.defaultFontAsset != null)
-                label.font = TMP_Settings.defaultFontAsset;
+            ApplyPreferredFont(label);
             return rect.gameObject;
         }
 
-        private static void AssignStreakDayView(ChallengeStreakDayView view, Image background, TextMeshProUGUI dayLabel, TextMeshProUGUI stateLabel, GameObject playedMarker, GameObject currentMarker)
+        private static void AssignLeaderboardEntryView(
+            ChallengeLeaderboardEntryView view,
+            GameObject contentRoot,
+            Image background,
+            TextMeshProUGUI rankText,
+            TextMeshProUGUI nameText,
+            TextMeshProUGUI timeText,
+            GameObject firstBadge,
+            GameObject secondBadge,
+            GameObject thirdBadge)
         {
 #if UNITY_EDITOR
-            UnityEditor.SerializedObject so = new(view);
-            SerializedReferenceUtility.Assign(so, "background", background);
-            SerializedReferenceUtility.Assign(so, "dayLabel", dayLabel);
-            SerializedReferenceUtility.Assign(so, "stateLabel", stateLabel);
-            SerializedReferenceUtility.Assign(so, "playedMarker", playedMarker);
-            SerializedReferenceUtility.Assign(so, "currentMarker", currentMarker);
-            so.ApplyModifiedPropertiesWithoutUndo();
+            UnityEditor.SerializedObject serializedObject = new(view);
+            SerializedReferenceUtility.Assign(serializedObject, "contentRoot", contentRoot);
+            SerializedReferenceUtility.Assign(serializedObject, "background", background);
+            SerializedReferenceUtility.Assign(serializedObject, "rankText", rankText);
+            SerializedReferenceUtility.Assign(serializedObject, "nameText", nameText);
+            SerializedReferenceUtility.Assign(serializedObject, "timeText", timeText);
+            SerializedReferenceUtility.Assign(serializedObject, "firstPlaceBadge", firstBadge);
+            SerializedReferenceUtility.Assign(serializedObject, "secondPlaceBadge", secondBadge);
+            SerializedReferenceUtility.Assign(serializedObject, "thirdPlaceBadge", thirdBadge);
+            serializedObject.ApplyModifiedPropertiesWithoutUndo();
 #endif
         }
 

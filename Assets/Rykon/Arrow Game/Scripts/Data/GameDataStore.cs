@@ -25,8 +25,6 @@ namespace ArrowGame.Data
     {
         public int chances = 1;
         public long lastResetUnixMilliseconds;
-        public int streakCycleIndex = -1;
-        public int streakMask;
         public float bestTimeSeconds = -1f;
     }
 
@@ -43,8 +41,9 @@ namespace ArrowGame.Data
         public string walletAddress;
         public string username;
         public bool hasPurchasedGame;
-        public int lives = 3;
-        public int hints = 10;
+        public int revives = -1;
+        public int lives = -1;
+        public int hints = 0;
         public bool tutorialCompleted;
         public MiniPayClassicProgressData classic = new();
         public MiniPayChallengeProgressData challenge = new();
@@ -55,7 +54,8 @@ namespace ArrowGame.Data
     {
         private const string LevelKey = "level";
         private const string HintCountKey = "hint_count";
-        private const string LivesCountKey = "lives_count";
+        private const string ReviveCountKey = "revives_count";
+        private const string LegacyLivesCountKey = "lives_count";
         private const string GamePurchasedKey = "game_purchased";
         private const string WalletAddressKey = "wallet_address";
         private const string PlayerNameKey = "player_name";
@@ -72,8 +72,8 @@ namespace ArrowGame.Data
         private const string DarkModeEnabledKey = "dark_mode_enabled";
         private const string TutorialCompletedKey = "tutorial_completed";
         private const int DefaultLevel = 1;
-        private const int DefaultHintCount = 10;
-        private const int DefaultLivesCount = 3;
+        private const int DefaultHintCount = 0;
+        private const int DefaultReviveCount = 3;
         private const int DefaultChallengeChanceCount = 1;
         private const bool DefaultVibrationEnabled = true;
         private const bool DefaultSoundEnabled = true;
@@ -86,17 +86,23 @@ namespace ArrowGame.Data
         private static int cachedHintCount = DefaultHintCount;
         private static bool suppressBridgeSync;
         private static bool bridgeBootstrapResolved;
+        private static bool isNotifyingDataChanged;
+        private static bool hasPendingDataChangedNotification;
+        private static bool pendingDataChangedRequiresBridgeSync;
         private static readonly List<ChallengeLeaderboardEntryData> remoteChallengeLeaderboard = new();
-        private static readonly string[] ChallengeRivalNames =
-        {
-            "Ava", "Noah", "Mira", "Theo", "Ivy", "Owen", "Luna", "Aria",
-            "Kai", "Zara", "Nina", "Ezra", "Milo", "Skye", "Nova", "Jude"
-        };
+        private static bool hasRemoteChallengeLeaderboardSnapshot;
+        private static int remoteChallengeLeaderboardCycleIndex = -1;
+        private static string remoteChallengeLeaderboardPatternName = string.Empty;
 
         public static event Action DataChanged;
         public static event Action ChallengeLeaderboardChanged;
 
         public static bool HasResolvedBridgeBootstrap => bridgeBootstrapResolved;
+
+        public static bool TryGetSharedChallengeWindow(out int cycleIndex, out DateTime endUtc)
+        {
+            return TryGetUniversalChallengeWindow(out cycleIndex, out endUtc);
+        }
 
         public static string WalletAddress
         {
@@ -150,10 +156,22 @@ namespace ArrowGame.Data
             }
         }
 
+        public static int ReviveCount
+        {
+            get
+            {
+                if (PlayerPrefs.HasKey(ReviveCountKey))
+                    return Mathf.Max(0, PlayerPrefs.GetInt(ReviveCountKey, DefaultReviveCount));
+
+                return Mathf.Max(0, PlayerPrefs.GetInt(LegacyLivesCountKey, DefaultReviveCount));
+            }
+            set => SaveInt(ReviveCountKey, Mathf.Max(0, value));
+        }
+
         public static int LivesCount
         {
-            get => Mathf.Max(0, PlayerPrefs.GetInt(LivesCountKey, DefaultLivesCount));
-            set => SaveInt(LivesCountKey, Mathf.Max(0, value));
+            get => ReviveCount;
+            set => ReviveCount = value;
         }
 
         public static bool HasPurchasedGame
@@ -182,7 +200,7 @@ namespace ArrowGame.Data
 
         public static bool HasCompletedTutorial
         {
-            get => GetBool(TutorialCompletedKey);
+            get => HasPurchasedGame || GetBool(TutorialCompletedKey);
             set => SaveBool(TutorialCompletedKey, value, syncBridge: false);
         }
 
@@ -203,18 +221,23 @@ namespace ArrowGame.Data
             HintCount += amount;
         }
 
-        public static void AddLives(int amount)
+        public static void AddRevives(int amount)
         {
             if (amount <= 0)
                 return;
 
-            LivesCount += amount;
+            ReviveCount += amount;
+        }
+
+        public static void AddLives(int amount)
+        {
+            AddRevives(amount);
         }
 
         public static void MarkTutorialCompleted()
         {
             HasCompletedTutorial = true;
-            NotifyDataChanged(syncBridge: false);
+            NotifyDataChanged(syncBridge: true);
         }
 
         public static void MarkBridgeBootstrapResolved()
@@ -241,7 +264,13 @@ namespace ArrowGame.Data
                 }
 
                 PlayerPrefs.SetInt(GamePurchasedKey, snapshot.hasPurchasedGame ? 1 : 0);
-                PlayerPrefs.SetInt(LivesCountKey, Mathf.Max(0, snapshot.lives));
+                int reviveCount = snapshot.revives >= 0
+                    ? snapshot.revives
+                    : snapshot.lives >= 0
+                        ? snapshot.lives
+                        : DefaultReviveCount;
+
+                PlayerPrefs.SetInt(ReviveCountKey, Mathf.Max(0, reviveCount));
                 PlayerPrefs.SetInt(HintCountKey, Mathf.Max(0, snapshot.hints));
                 hintCountLoaded = true;
                 cachedHintCount = Mathf.Max(0, snapshot.hints);
@@ -254,14 +283,13 @@ namespace ArrowGame.Data
                     PlayerPrefs.SetInt(ChallengeChanceCountKey, Mathf.Max(0, snapshot.challenge.chances));
                     SaveLongRaw(ChallengeLastResetUnixMillisecondsKey, Math.Max(0L, snapshot.challenge.lastResetUnixMilliseconds));
 
-                    int streakCycleIndex = snapshot.challenge.streakCycleIndex >= 0
-                        ? snapshot.challenge.streakCycleIndex
-                        : GetCurrentChallengeCycleIndex(DateTime.UtcNow);
-
-                    PlayerPrefs.SetInt(GetChallengeStreakMaskKey(streakCycleIndex), Mathf.Max(0, snapshot.challenge.streakMask));
-
                     if (snapshot.challenge.bestTimeSeconds > 0f)
-                        PlayerPrefs.SetFloat(GetChallengeBestTimeKey(streakCycleIndex), snapshot.challenge.bestTimeSeconds);
+                    {
+                        int bestTimeCycleIndex = snapshot.universal != null && snapshot.universal.weeklyChallengeCycleIndex >= 0
+                            ? snapshot.universal.weeklyChallengeCycleIndex
+                            : GetCurrentChallengeCycleIndex(DateTime.UtcNow);
+                        PlayerPrefs.SetFloat(GetChallengeBestTimeKey(bestTimeCycleIndex), snapshot.challenge.bestTimeSeconds);
+                    }
                 }
 
                 if (snapshot.universal != null)
@@ -296,15 +324,16 @@ namespace ArrowGame.Data
         public static MiniPayUserSnapshotData BuildBridgeSnapshot(DateTime utcNow)
         {
             DateTime normalizedUtcNow = utcNow.ToUniversalTime();
-            int cycleIndex = GetCurrentChallengeCycleIndex(normalizedUtcNow);
             RefreshChallengeChances(normalizedUtcNow, syncBridgeIfChanged: false);
+            bool hasSharedChallengeWindow = TryGetUniversalChallengeWindow(out int sharedCycleIndex, out DateTime sharedChallengeEndUtc);
 
             return new MiniPayUserSnapshotData
             {
                 walletAddress = WalletAddress,
                 username = PlayerName,
                 hasPurchasedGame = HasPurchasedGame,
-                lives = LivesCount,
+                revives = ReviveCount,
+                lives = ReviveCount,
                 hints = HintCount,
                 tutorialCompleted = HasCompletedTutorial,
                 classic = new MiniPayClassicProgressData
@@ -315,14 +344,14 @@ namespace ArrowGame.Data
                 {
                     chances = PlayerPrefs.GetInt(ChallengeChanceCountKey, DefaultChallengeChanceCount),
                     lastResetUnixMilliseconds = GetLong(ChallengeLastResetUnixMillisecondsKey, 0L),
-                    streakCycleIndex = cycleIndex,
-                    streakMask = PlayerPrefs.GetInt(GetChallengeStreakMaskKey(cycleIndex), 0),
                     bestTimeSeconds = GetChallengeBestTimeSeconds(normalizedUtcNow)
                 },
                 universal = new MiniPayUniversalProgressData
                 {
-                    weeklyChallengeCycleIndex = GetCurrentChallengeCycleIndex(normalizedUtcNow),
-                    weeklyChallengeEndUnixMilliseconds = ToUnixMilliseconds(GetCurrentChallengeCycleEndUtc(normalizedUtcNow))
+                    weeklyChallengeCycleIndex = hasSharedChallengeWindow ? sharedCycleIndex : -1,
+                    weeklyChallengeEndUnixMilliseconds = hasSharedChallengeWindow
+                        ? ToUnixMilliseconds(sharedChallengeEndUtc)
+                        : -1
                 }
             };
         }
@@ -428,11 +457,6 @@ namespace ArrowGame.Data
             if (remainingChances <= 0)
                 SaveLongRaw(ChallengeLastResetUnixMillisecondsKey, ToUnixMilliseconds(utcDateTime));
 
-            int cycleIndex = GetCurrentChallengeCycleIndex(utcDateTime);
-            int dayIndex = GetCurrentChallengeDayIndex(utcDateTime);
-            int streakMask = PlayerPrefs.GetInt(GetChallengeStreakMaskKey(cycleIndex), 0);
-            streakMask |= 1 << dayIndex;
-            PlayerPrefs.SetInt(GetChallengeStreakMaskKey(cycleIndex), streakMask);
             PlayerPrefs.Save();
 
             NotifyDataChanged();
@@ -457,31 +481,6 @@ namespace ArrowGame.Data
             PlayerPrefs.Save();
             NotifyDataChanged();
             return true;
-        }
-
-        public static int GetChallengeStreakMask(DateTime utcNow)
-        {
-            int cycleIndex = GetCurrentChallengeCycleIndex(utcNow);
-            return PlayerPrefs.GetInt(GetChallengeStreakMaskKey(cycleIndex), 0);
-        }
-
-        public static int GetPlayedChallengeDayCount(DateTime utcNow)
-        {
-            int streakMask = GetChallengeStreakMask(utcNow);
-            int playedCount = 0;
-            for (int i = 0; i < ChallengeCycleLengthDays; i++)
-            {
-                if ((streakMask & (1 << i)) != 0)
-                    playedCount++;
-            }
-
-            return playedCount;
-        }
-
-        public static bool HasPlayedChallengeDay(DateTime utcNow, int dayIndex)
-        {
-            int streakMask = GetChallengeStreakMask(utcNow);
-            return (streakMask & (1 << dayIndex)) != 0;
         }
 
         public static float GetChallengeBestTimeSeconds(DateTime utcNow)
@@ -527,8 +526,16 @@ namespace ArrowGame.Data
             }
         }
 
-        public static void ApplyChallengeLeaderboard(List<ChallengeLeaderboardEntryData> entries)
+        public static void ApplyChallengeLeaderboard(List<ChallengeLeaderboardEntryData> entries, DateTime utcNow, string patternName)
         {
+            ApplyChallengeLeaderboard(entries, GetCurrentChallengeCycleIndex(utcNow), patternName);
+        }
+
+        public static void ApplyChallengeLeaderboard(List<ChallengeLeaderboardEntryData> entries, int cycleIndex, string patternName)
+        {
+            hasRemoteChallengeLeaderboardSnapshot = true;
+            remoteChallengeLeaderboardCycleIndex = Mathf.Max(0, cycleIndex);
+            remoteChallengeLeaderboardPatternName = patternName?.Trim() ?? string.Empty;
             remoteChallengeLeaderboard.Clear();
             if (entries != null)
             {
@@ -550,7 +557,29 @@ namespace ArrowGame.Data
             ChallengeLeaderboardChanged?.Invoke();
         }
 
-        public static List<ChallengeLeaderboardEntryData> GetChallengeLeaderboardEntries(DateTime utcNow, int entryCount)
+        public static bool HasChallengeLeaderboardSnapshot(DateTime utcNow, string patternName)
+        {
+            return EnsureChallengeLeaderboardCacheValidity(utcNow, patternName, false);
+        }
+
+        public static bool HasChallengeLeaderboardSnapshot(int cycleIndex, string patternName)
+        {
+            return EnsureChallengeLeaderboardCacheValidity(cycleIndex, patternName, false);
+        }
+
+        public static List<ChallengeLeaderboardEntryData> GetChallengeLeaderboardEntries(DateTime utcNow, string patternName, int entryCount)
+        {
+            EnsureChallengeLeaderboardCacheValidity(utcNow, patternName, true);
+            return BuildChallengeLeaderboardEntries(utcNow, entryCount);
+        }
+
+        public static List<ChallengeLeaderboardEntryData> GetChallengeLeaderboardEntries(int cycleIndex, DateTime utcNow, string patternName, int entryCount)
+        {
+            EnsureChallengeLeaderboardCacheValidity(cycleIndex, patternName, true);
+            return BuildChallengeLeaderboardEntries(utcNow, entryCount);
+        }
+
+        private static List<ChallengeLeaderboardEntryData> BuildChallengeLeaderboardEntries(DateTime utcNow, int entryCount)
         {
             if (remoteChallengeLeaderboard.Count == 0)
                 return BuildLocalChallengeLeaderboard(utcNow, entryCount);
@@ -576,57 +605,46 @@ namespace ArrowGame.Data
         {
             int safeEntryCount = Mathf.Max(entryCount, 1);
             List<ChallengeLeaderboardEntryData> entries = new();
-            int cycleIndex = GetCurrentChallengeCycleIndex(utcNow);
             float playerBestTime = GetChallengeBestTimeSeconds(utcNow);
 
             if (playerBestTime > 0f)
             {
                 entries.Add(new ChallengeLeaderboardEntryData
                 {
+                    rank = 1,
                     playerName = ChallengePlayerName,
                     completionSeconds = playerBestTime,
                     isPlayer = true
                 });
             }
+            return entries.Count > safeEntryCount
+                ? entries.GetRange(0, safeEntryCount)
+                : entries;
+        }
 
-            System.Random random = new(cycleIndex * 3571 + 91);
-            float baselineSeconds = playerBestTime > 0f ? Mathf.Clamp(playerBestTime, 18f, 360f) : 72f + cycleIndex * 1.7f;
-            int rivalCount = Mathf.Max(safeEntryCount + 3, 8);
-            for (int i = 0; i < rivalCount; i++)
+        private static bool EnsureChallengeLeaderboardCacheValidity(DateTime utcNow, string patternName, bool clearIfInvalid)
+        {
+            return EnsureChallengeLeaderboardCacheValidity(GetCurrentChallengeCycleIndex(utcNow), patternName, clearIfInvalid);
+        }
+
+        private static bool EnsureChallengeLeaderboardCacheValidity(int cycleIndex, string patternName, bool clearIfInvalid)
+        {
+            if (!hasRemoteChallengeLeaderboardSnapshot)
+                return false;
+
+            string safePatternName = patternName?.Trim() ?? string.Empty;
+            bool isValid = remoteChallengeLeaderboardCycleIndex == Mathf.Max(0, cycleIndex) &&
+                           string.Equals(remoteChallengeLeaderboardPatternName, safePatternName, StringComparison.Ordinal);
+
+            if (!isValid && clearIfInvalid)
             {
-                float variation = (float)(random.NextDouble() * 28d - 10d);
-                float rivalTime = Mathf.Max(12f, baselineSeconds + variation + i * 0.85f);
-                entries.Add(new ChallengeLeaderboardEntryData
-                {
-                    playerName = $"{ChallengeRivalNames[i % ChallengeRivalNames.Length]} {random.Next(1, 90)}",
-                    completionSeconds = rivalTime,
-                    isPlayer = false
-                });
+                hasRemoteChallengeLeaderboardSnapshot = false;
+                remoteChallengeLeaderboardCycleIndex = -1;
+                remoteChallengeLeaderboardPatternName = string.Empty;
+                remoteChallengeLeaderboard.Clear();
             }
 
-            entries.Sort((left, right) => left.completionSeconds.CompareTo(right.completionSeconds));
-
-            List<ChallengeLeaderboardEntryData> rankedEntries = new();
-            for (int i = 0; i < entries.Count && rankedEntries.Count < safeEntryCount; i++)
-            {
-                ChallengeLeaderboardEntryData entry = entries[i];
-                entry.rank = i + 1;
-                rankedEntries.Add(entry);
-            }
-
-            if (playerBestTime > 0f && rankedEntries.TrueForAll(entry => !entry.isPlayer))
-            {
-                int playerRank = entries.FindIndex(entry => entry.isPlayer) + 1;
-                rankedEntries.Add(new ChallengeLeaderboardEntryData
-                {
-                    rank = playerRank,
-                    playerName = ChallengePlayerName,
-                    completionSeconds = playerBestTime,
-                    isPlayer = true
-                });
-            }
-
-            return rankedEntries;
+            return isValid;
         }
 
         private static void RefreshChallengeChances(DateTime utcNow, bool syncBridgeIfChanged = true)
@@ -718,11 +736,6 @@ namespace ArrowGame.Data
             return Convert.ToInt64((utcDateTime.ToUniversalTime() - UnixEpochUtc).TotalMilliseconds);
         }
 
-        private static string GetChallengeStreakMaskKey(int cycleIndex)
-        {
-            return $"challenge_cycle_{cycleIndex}_streak_mask";
-        }
-
         private static string GetChallengeBestTimeKey(int cycleIndex)
         {
             return $"challenge_cycle_{cycleIndex}_best_time";
@@ -730,8 +743,33 @@ namespace ArrowGame.Data
 
         private static void NotifyDataChanged(bool syncBridge = true)
         {
-            DataChanged?.Invoke();
-            if (suppressBridgeSync || !syncBridge)
+            if (isNotifyingDataChanged)
+            {
+                hasPendingDataChangedNotification = true;
+                pendingDataChangedRequiresBridgeSync |= syncBridge;
+                return;
+            }
+
+            bool shouldSyncBridge = syncBridge;
+            do
+            {
+                hasPendingDataChangedNotification = false;
+                pendingDataChangedRequiresBridgeSync = false;
+                isNotifyingDataChanged = true;
+                try
+                {
+                    DataChanged?.Invoke();
+                }
+                finally
+                {
+                    isNotifyingDataChanged = false;
+                }
+
+                shouldSyncBridge |= pendingDataChangedRequiresBridgeSync;
+            }
+            while (hasPendingDataChangedNotification);
+
+            if (suppressBridgeSync || !shouldSyncBridge || !bridgeBootstrapResolved)
                 return;
 
             MiniPayBridge.RequestUserStateSync();

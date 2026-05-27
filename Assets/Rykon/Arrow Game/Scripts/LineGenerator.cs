@@ -22,8 +22,8 @@ namespace ArrowGame
 
         [Header("Line Visuals")]
         public float renderCellSpacing = 1.7f;
-        public float lineWidth = 0.2f;
-        public float arrowSize = 0.5f;
+        public float lineWidth = 0.34f;
+        public float arrowSize = 0.34f;
         public GameObject arrowPrefab;
         public float dotSize = 0.2f;
         public Color dotColor = new(0f, 0.14f, 1f, 0.39f);
@@ -31,8 +31,8 @@ namespace ArrowGame
         public Color guideLineColor = new(0f, 0.14f, 1f, 0.52f);
         public float segmentEndpointInset = 0.08f;
         public float headEndpointInset = 0.34f;
-        public float tailEndpointInset = 0.26f;
-        public float arrowScaleMultiplier = 1.2f;
+        public float tailEndpointInset = 0.24f;
+        public float arrowScaleMultiplier = 0.86f;
 
         [Header("Segment Aggregation")]
         public int minSegmentEdges = 3;
@@ -1556,7 +1556,7 @@ namespace ArrowGame
 
         private Sprite BuildCircleSprite(string spriteName)
         {
-            const int size = 32;
+            const int size = 128;
             Texture2D texture = new(size, size, TextureFormat.RGBA32, false);
             texture.filterMode = FilterMode.Bilinear;
 
@@ -1567,7 +1567,8 @@ namespace ArrowGame
                 for (int x = 0; x < size; x++)
                 {
                     float distance = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), center);
-                    float alpha = distance <= radius ? 1f : 0f;
+                    float edge = 1.25f;
+                    float alpha = 1f - Mathf.Clamp01((distance - (radius - edge)) / edge);
                     texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
                 }
             }
@@ -1580,7 +1581,7 @@ namespace ArrowGame
 
         private Sprite BuildArrowSprite(string spriteName)
         {
-            const int size = 64;
+            const int size = 256;
             Texture2D texture = new(size, size, TextureFormat.RGBA32, false);
             texture.filterMode = FilterMode.Bilinear;
 
@@ -1593,7 +1594,9 @@ namespace ArrowGame
                 for (int x = 0; x < size; x++)
                 {
                     Vector2 point = new(x + 0.5f, y + 0.5f);
-                    float alpha = IsPointInsideTriangle(point, top, left, right) ? 1f : 0f;
+                    float signedDistance = SignedDistanceToTriangle(point, top, left, right);
+                    float feather = 1.8f;
+                    float alpha = 1f - Mathf.Clamp01((signedDistance + feather) / feather);
                     texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
                 }
             }
@@ -1615,6 +1618,32 @@ namespace ArrowGame
             bool hasPositive = area1 > 0f || area2 > 0f || area3 > 0f;
 
             return Mathf.Abs(area) > 0.0001f && !(hasNegative && hasPositive);
+        }
+
+        private static float SignedDistanceToTriangle(Vector2 point, Vector2 a, Vector2 b, Vector2 c)
+        {
+            bool inside = IsPointInsideTriangle(point, a, b, c);
+            float edgeDistance = Mathf.Min(
+                DistanceToSegment(point, a, b),
+                Mathf.Min(
+                    DistanceToSegment(point, b, c),
+                    DistanceToSegment(point, c, a)));
+
+            return inside ? -edgeDistance : edgeDistance;
+        }
+
+        private static float DistanceToSegment(Vector2 point, Vector2 a, Vector2 b)
+        {
+            Vector2 ab = b - a;
+            float denominator = Vector2.Dot(ab, ab);
+            if (denominator <= Mathf.Epsilon)
+            {
+                return Vector2.Distance(point, a);
+            }
+
+            float t = Mathf.Clamp01(Vector2.Dot(point - a, ab) / denominator);
+            Vector2 projection = a + ab * t;
+            return Vector2.Distance(point, projection);
         }
 
         private static float Cross(Vector2 a, Vector2 b)

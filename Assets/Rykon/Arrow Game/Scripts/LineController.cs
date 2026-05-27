@@ -31,8 +31,8 @@ namespace ArrowGame
         private bool hasPlayedEscapeSuccessSound;
         private float segmentEndpointInset = 0.14f;
         private float headEndpointInset = 0.28f;
-        private float tailEndpointInset = 0.22f;
-        private float arrowScaleMultiplier = 1.15f;
+        private float tailEndpointInset = 0.2f;
+        private float arrowScaleMultiplier = 1f;
         private float baseArrowScale = 1f;
         private float cachedLineWidth = 0.2f;
         private Color currentVisualColor = Color.black;
@@ -40,6 +40,7 @@ namespace ArrowGame
         private Color themeBaseColor = Color.black;
         private Color themeHintColor = Color.yellow;
         private Color themeBlockedColor = Color.red;
+        private bool isHintHighlighted;
 
         public void Init()
         {
@@ -66,7 +67,7 @@ namespace ArrowGame
 
             head = gameObject.AddComponent<BoxCollider2D>();
             rear = gameObject.AddComponent<BoxCollider2D>();
-            float capColliderSize = Mathf.Max(0.08f, cachedLineWidth * 0.8f);
+            float capColliderSize = Mathf.Max(0.16f, cachedLineWidth * 1.6f);
             head.size = rear.size = Vector2.one * capColliderSize;
             head.offset = points[0];
             rear.offset = points[^1];
@@ -191,7 +192,38 @@ namespace ArrowGame
 
         public void ShowHint()
         {
-            StartCoroutine(ShowHintCO());
+            isHintHighlighted = true;
+            RefreshVisualState();
+        }
+
+        public void ClearHint()
+        {
+            isHintHighlighted = false;
+            RefreshVisualState();
+        }
+
+        public Bounds GetWorldBounds()
+        {
+            if (points == null || points.Count == 0)
+                return new Bounds(transform.position, Vector3.one);
+
+            Vector3 firstPoint = transform.TransformPoint(points[0]);
+            Bounds bounds = new(firstPoint, Vector3.zero);
+
+            for (int i = 1; i < points.Count; i++)
+                bounds.Encapsulate(transform.TransformPoint(points[i]));
+
+            if (arrow != null)
+            {
+                bounds.Encapsulate(arrow.position);
+                SpriteRenderer arrowRenderer = arrow.GetComponent<SpriteRenderer>();
+                if (arrowRenderer != null)
+                    bounds.Encapsulate(arrowRenderer.bounds);
+            }
+
+            float linePadding = Mathf.Max(cachedLineWidth, 0.15f);
+            bounds.Expand(new Vector3(linePadding, linePadding, 0f));
+            return bounds;
         }
 
         public void CompleteForWin()
@@ -203,13 +235,15 @@ namespace ArrowGame
         {
             Vector2 worldPosition = Camera.main.ScreenToWorldPoint(screenPosition);
             float minDistance = CheckDistanceToLine(worldPosition);
+            float tailDistance = CheckDistanceToTail(worldPosition);
 
-            if (minDistance < 0.5f)
+            if (minDistance < GetRemovalHitRadius() || tailDistance < GetTailHitRadius())
             {
                 if (TryGetBlockingHit(out RaycastHit2D blockingHit))
                 {
                     if (!isBlockedAnimating)
                     {
+                        HapticManager.PlayFailure();
                         SoundManager.PlayWrongArrowClick();
                         StartCoroutine(OnBlockedHit(blockingHit));
                     }
@@ -223,7 +257,9 @@ namespace ArrowGame
         private void OnLineClicked()
         {
             isClicked = true;
+            isHintHighlighted = false;
             hasPlayedEscapeSuccessSound = false;
+            HapticManager.PlaySuccess();
             SoundManager.PlayRightArrowClick();
             SetGuideVisible(false);
             gameObject.layer = 2;
@@ -250,17 +286,10 @@ namespace ArrowGame
             SetArrowLocalPosition(originalHead);
             UpdateLineRender();
 
-            SetVisualColor(themeBaseColor);
+            RefreshVisualState();
 
             ArrowGameManager.Instance.OnCollide();
             isBlockedAnimating = false;
-        }
-
-        private IEnumerator ShowHintCO()
-        {
-            SetVisualColor(themeHintColor);
-            yield return new WaitForSeconds(1.5f);
-            SetVisualColor(themeBaseColor);
         }
 
         private float CheckDistanceToLine(Vector2 point)
@@ -288,6 +317,38 @@ namespace ArrowGame
 
             Vector2 nearestPoint = lineStart + lineDir * dot;
             return Vector2.Distance(point, nearestPoint);
+        }
+
+        private float GetRemovalHitRadius()
+        {
+            float arrowRadius = arrow != null
+                ? Mathf.Max(arrow.lossyScale.x, arrow.lossyScale.y) * 0.42f
+                : baseArrowScale * arrowScaleMultiplier * 0.42f;
+
+            return Mathf.Max(0.8f, cachedLineWidth * 3.8f, arrowRadius * 0.9f);
+        }
+
+        private float GetTailHitRadius()
+        {
+            return Mathf.Max(0.92f, cachedLineWidth * 4.8f);
+        }
+
+        private float CheckDistanceToTail(Vector2 point)
+        {
+            if (points == null || points.Count == 0)
+                return float.MaxValue;
+
+            Vector2 tailPoint = transform.TransformPoint(points[^1]);
+            float bestDistance = Vector2.Distance(point, tailPoint);
+
+            if (points.Count >= 2)
+            {
+                Vector2 tailSegmentStart = transform.TransformPoint(points[^2]);
+                Vector2 tailSegmentEnd = tailPoint;
+                bestDistance = Mathf.Min(bestDistance, PointToLineDistance(point, tailSegmentStart, tailSegmentEnd));
+            }
+
+            return bestDistance;
         }
 
         private Vector2 GetHeadDirection()
@@ -398,6 +459,11 @@ namespace ArrowGame
             SetVisualColor(color);
         }
 
+        private void RefreshVisualState()
+        {
+            SetVisualColor(isHintHighlighted ? themeHintColor : themeBaseColor);
+        }
+
         private void Update()
         {
             bool isInputLocked = ArrowGameManager.Instance != null && ArrowGameManager.Instance.IsInputLocked;
@@ -427,7 +493,6 @@ namespace ArrowGame
                     if (!hasPlayedEscapeSuccessSound)
                     {
                         hasPlayedEscapeSuccessSound = true;
-                        HapticManager.PlaySuccess();
                         SoundManager.PlayArrowEscapeSuccess();
                     }
 
@@ -498,7 +563,7 @@ namespace ArrowGame
             lineRenderer.enabled = true;
             lineRenderer.positionCount = points.Count;
             lineRenderer.startWidth = cachedLineWidth;
-            lineRenderer.endWidth = cachedLineWidth;
+            lineRenderer.endWidth = 0.12f;
             lineRenderer.startColor = currentVisualColor;
             lineRenderer.endColor = currentVisualColor;
 
@@ -521,7 +586,7 @@ namespace ArrowGame
             segmentRenderer.textureMode = lineRenderer.textureMode;
             segmentRenderer.widthMultiplier = 1f;
             segmentRenderer.startWidth = cachedLineWidth;
-            segmentRenderer.endWidth = cachedLineWidth;
+            segmentRenderer.endWidth = 0.11f;
             segmentRenderer.numCapVertices = 8;
             segmentRenderer.numCornerVertices = 0;
             segmentRenderer.sortingOrder = lineRenderer.sortingOrder;

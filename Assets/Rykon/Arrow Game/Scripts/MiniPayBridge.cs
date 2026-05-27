@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using ArrowGame.Data;
@@ -51,31 +52,62 @@ namespace ArrowGame
         }
 
         private const string BridgeObjectName = "MiniPayBridge";
-        private const string HintPackageId = "arrow_out_hints_10";
-        private const string LivesPackageId = "arrow_out_lives_3";
-        private const int DefaultLeaderboardRequestLimit = 10;
+        private const string HintPackageId = "arrow_out_hints_5";
+        private const string RevivePackageId = "arrow_out_revive_1";
+        private const int DefaultLeaderboardRequestLimit = 25;
+        private const float UserStateSyncDebounceSeconds = 0.75f;
+        private const float BootstrapRetryDelaySeconds = 0.6f;
+        private const int MaxBootstrapRetryCount = 6;
 
         private static MiniPayBridge instance;
+        private int lastRequestedLeaderboardCycleIndex = -1;
+        private string lastRequestedLeaderboardPatternName = string.Empty;
+        private Coroutine queuedUserStateSyncCoroutine;
+        private Coroutine bootstrapRetryCoroutine;
+        private string pendingUserStateSyncReason = string.Empty;
+        private string lastSyncedSnapshotJson = string.Empty;
+        private int bootstrapRetryCount;
 
         public static event Action InitialStateResolved;
+        public static event Action<string> GamePurchaseStatusReceived;
         public static event Action<string> GamePurchaseFailed;
         public static event Action GamePurchaseSucceeded;
         public static event Action<string> HintPurchaseFailed;
         public static event Action HintPurchaseSucceeded;
+        public static event Action<string> RevivePurchaseFailed;
+        public static event Action RevivePurchaseSucceeded;
         public static event Action<string> LivesPurchaseFailed;
         public static event Action LivesPurchaseSucceeded;
+        public static event Action ChallengeLeaderboardSubmitted;
+        public static event Action<string> ChallengeLeaderboardSubmitFailed;
         public static event Action<string> BridgeLogReceived;
 
         public bool HasResolvedInitialState { get; private set; }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-        [DllImport("__Internal")] private static extern void MiniPayBridge_RequestBootstrap();
-        [DllImport("__Internal")] private static extern void MiniPayBridge_SyncUserState(string payloadJson);
-        [DllImport("__Internal")] private static extern void MiniPayBridge_PurchaseGame();
-        [DllImport("__Internal")] private static extern void MiniPayBridge_BuyHints(string payloadJson);
-        [DllImport("__Internal")] private static extern void MiniPayBridge_BuyLives(string payloadJson);
-        [DllImport("__Internal")] private static extern void MiniPayBridge_SubmitChallengeResult(string payloadJson);
-        [DllImport("__Internal")] private static extern void MiniPayBridge_RequestChallengeLeaderboard(string payloadJson);
+[DllImport("__Internal")]
+private static extern void MiniPayBridge_RequestBootstrap();
+
+[DllImport("__Internal")]
+private static extern void MiniPayBridge_Initialize();
+
+[DllImport("__Internal")]
+private static extern void MiniPayBridge_SyncUserState(string snapshotJson);
+
+[DllImport("__Internal")]
+private static extern void MiniPayBridge_PurchaseGame(string token);
+
+[DllImport("__Internal")]
+private static extern void MiniPayBridge_BuyHints(int amount, string token);
+
+[DllImport("__Internal")]
+private static extern void MiniPayBridge_BuyRevive(int amount, string token, string mode);
+
+[DllImport("__Internal")]
+private static extern void MiniPayBridge_SubmitChallengeScore(string payloadJson);
+
+[DllImport("__Internal")]
+private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
 #endif
 
         public static MiniPayBridge Instance => EnsureInstance();
@@ -131,10 +163,24 @@ namespace ArrowGame
         {
             gameObject.name = BridgeObjectName;
             DontDestroyOnLoad(gameObject);
+            InitializeInterop();
+        }
+
+        private static void InitializeInterop()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            MiniPayBridge_Initialize();
+#endif
         }
 
         public void RequestBootstrap()
         {
+            if (bootstrapRetryCoroutine != null)
+            {
+                StopCoroutine(bootstrapRetryCoroutine);
+                bootstrapRetryCoroutine = null;
+            }
+
 #if UNITY_WEBGL && !UNITY_EDITOR
             MiniPayBridge_RequestBootstrap();
 #else
@@ -148,24 +194,65 @@ namespace ArrowGame
             if (!Application.isPlaying)
                 return;
 
-            Instance.SyncCurrentState(reason);
+            Instance.QueueUserStateSync(reason);
         }
 
         public void SyncCurrentState(string reason = "")
         {
+            pendingUserStateSyncReason = string.Empty;
+            if (queuedUserStateSyncCoroutine != null)
+            {
+                StopCoroutine(queuedUserStateSyncCoroutine);
+                queuedUserStateSyncCoroutine = null;
+            }
+
+            SendCurrentState(reason);
+        }
+
+        private void QueueUserStateSync(string reason = "")
+        {
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                pendingUserStateSyncReason = string.IsNullOrWhiteSpace(pendingUserStateSyncReason)
+                    ? reason.Trim()
+                    : $"{pendingUserStateSyncReason}, {reason.Trim()}";
+            }
+
+            if (queuedUserStateSyncCoroutine != null)
+                return;
+
+            queuedUserStateSyncCoroutine = StartCoroutine(QueueUserStateSyncCO());
+        }
+
+        private IEnumerator QueueUserStateSyncCO()
+        {
+            yield return new WaitForSecondsRealtime(UserStateSyncDebounceSeconds);
+            queuedUserStateSyncCoroutine = null;
+
+            string reason = pendingUserStateSyncReason;
+            pendingUserStateSyncReason = string.Empty;
+            SendCurrentState(reason);
+        }
+
+        private void SendCurrentState(string reason = "")
+        {
             string payloadJson = GameDataStore.BuildBridgeSnapshotJson(DateTime.UtcNow);
+            if (string.Equals(payloadJson, lastSyncedSnapshotJson, StringComparison.Ordinal))
+                return;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
             MiniPayBridge_SyncUserState(payloadJson);
+            lastSyncedSnapshotJson = payloadJson;
 #else
             Debug.Log($"MiniPayBridge.SyncCurrentState editor fallback ({reason})");
+            lastSyncedSnapshotJson = payloadJson;
 #endif
         }
 
         public void PurchaseGame()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            MiniPayBridge_PurchaseGame();
+            MiniPayBridge_PurchaseGame("USDT");
 #else
             GameDataStore.HasPurchasedGame = true;
             ResolveInitialState();
@@ -184,7 +271,10 @@ namespace ArrowGame
             };
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-            MiniPayBridge_BuyHints(JsonUtility.ToJson(payload));
+            MiniPayBridge_BuyHints(
+    payload.amount,
+    "USDT"
+);
 #else
             if (amount > 0)
                 GameDataStore.AddHints(amount);
@@ -194,39 +284,57 @@ namespace ArrowGame
 #endif
         }
 
-        public void BuyLives(int amount)
+        public void BuyRevive(int amount = 1, string mode = "classic")
         {
             PurchaseRequestPayload payload = new()
             {
-                productId = LivesPackageId,
+                productId = RevivePackageId,
                 amount = Mathf.Max(0, amount),
                 walletAddress = GameDataStore.WalletAddress
             };
 
+            string purchaseMode = string.Equals(mode, "challenge", StringComparison.OrdinalIgnoreCase)
+                ? "challenge"
+                : "classic";
+
 #if UNITY_WEBGL && !UNITY_EDITOR
-            MiniPayBridge_BuyLives(JsonUtility.ToJson(payload));
+            MiniPayBridge_BuyRevive(
+    payload.amount,
+    "USDT",
+    purchaseMode
+);
 #else
-            if (amount > 0)
-                GameDataStore.AddLives(amount);
             ResolveInitialState();
+            RevivePurchaseSucceeded?.Invoke();
             LivesPurchaseSucceeded?.Invoke();
-            Debug.Log("MiniPayBridge.BuyLives editor fallback");
+            Debug.Log("MiniPayBridge.BuyRevive editor fallback");
 #endif
+        }
+
+        public void BuyLives(int amount)
+        {
+            BuyRevive(amount);
         }
 
         public void SubmitChallengeResult(float completionSeconds, string patternName)
         {
+            int cycleIndex = GameDataStore.TryGetSharedChallengeWindow(out int sharedCycleIndex, out _)
+                ? sharedCycleIndex
+                : GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow);
+
             ChallengeResultPayload payload = new()
             {
                 walletAddress = GameDataStore.WalletAddress,
                 playerName = GameDataStore.ChallengePlayerName,
-                cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow),
+                cycleIndex = cycleIndex,
                 patternName = patternName,
                 completionSeconds = Mathf.Max(0f, completionSeconds)
             };
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-            MiniPayBridge_SubmitChallengeResult(JsonUtility.ToJson(payload));
+            MiniPayBridge_SubmitChallengeScore(
+    JsonUtility.ToJson(payload)
+);
 #else
             Debug.Log("MiniPayBridge.SubmitChallengeResult editor fallback");
 #endif
@@ -234,16 +342,23 @@ namespace ArrowGame
 
         public void RequestChallengeLeaderboard(string patternName, int limit = DefaultLeaderboardRequestLimit)
         {
+            lastRequestedLeaderboardPatternName = patternName?.Trim() ?? string.Empty;
+            lastRequestedLeaderboardCycleIndex = GameDataStore.TryGetSharedChallengeWindow(out int sharedCycleIndex, out _)
+                ? sharedCycleIndex
+                : GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow);
+
             ChallengeLeaderboardRequestPayload payload = new()
             {
-                cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow),
-                patternName = patternName,
+                cycleIndex = lastRequestedLeaderboardCycleIndex,
+                patternName = lastRequestedLeaderboardPatternName,
                 limit = Mathf.Max(1, limit),
                 walletAddress = GameDataStore.WalletAddress
             };
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-            MiniPayBridge_RequestChallengeLeaderboard(JsonUtility.ToJson(payload));
+           MiniPayBridge_RequestLeaderboard(
+    JsonUtility.ToJson(payload)
+);
 #else
             Debug.Log("MiniPayBridge.RequestChallengeLeaderboard editor fallback");
 #endif
@@ -251,33 +366,60 @@ namespace ArrowGame
 
         public void OnBootstrapDataReceived(string json)
         {
-            TryApplyBridgeSnapshot(json);
-            ResolveInitialState();
+            if (TryApplyBridgeSnapshot(json))
+            {
+                bootstrapRetryCount = 0;
+                ResolveInitialState();
+                return;
+            }
+
+            if (Application.isPlaying && bootstrapRetryCount < MaxBootstrapRetryCount)
+            {
+                bootstrapRetryCount++;
+                if (bootstrapRetryCoroutine != null)
+                    StopCoroutine(bootstrapRetryCoroutine);
+                bootstrapRetryCoroutine = StartCoroutine(RetryBootstrapAfterDelay());
+                Debug.LogWarning($"MiniPayBridge received empty bootstrap snapshot. Retrying bootstrap ({bootstrapRetryCount}/{MaxBootstrapRetryCount}).");
+                return;
+            }
+
+            Debug.LogWarning("MiniPayBridge bootstrap snapshot was empty after retries. Waiting for a usable remote snapshot before resolving initial state.");
         }
 
         public void OnUserStateSynced(string json)
         {
-            if (!string.IsNullOrWhiteSpace(json))
-                TryApplyBridgeSnapshot(json);
+            if (TryApplyBridgeSnapshot(json))
+            {
+                bootstrapRetryCount = 0;
+                ResolveInitialState();
+            }
         }
 
         public void OnWalletAddressResolved(string walletAddress)
         {
             if (!string.IsNullOrWhiteSpace(walletAddress))
                 GameDataStore.WalletAddress = walletAddress.Trim();
-
-            ResolveInitialState();
         }
 
         public void OnGamePurchaseSuccess(string json)
         {
-            if (!string.IsNullOrWhiteSpace(json))
-                TryApplyBridgeSnapshot(json);
+            if (TryApplyBridgeSnapshot(json))
+            {
+                bootstrapRetryCount = 0;
+            }
             else
+            {
                 GameDataStore.HasPurchasedGame = true;
+            }
 
             ResolveInitialState();
             GamePurchaseSucceeded?.Invoke();
+        }
+
+        public void OnGamePurchaseStatus(string message)
+        {
+            ResolveInitialState();
+            GamePurchaseStatusReceived?.Invoke(string.IsNullOrWhiteSpace(message) ? "Waiting for MiniPay confirmation..." : message);
         }
 
         public void OnGamePurchaseFailed(string errorMessage)
@@ -288,8 +430,8 @@ namespace ArrowGame
 
         public void OnHintPurchaseSuccess(string json)
         {
-            if (!string.IsNullOrWhiteSpace(json))
-                TryApplyBridgeSnapshot(json);
+            if (TryApplyBridgeSnapshot(json))
+                bootstrapRetryCount = 0;
 
             ResolveInitialState();
             HintPurchaseSucceeded?.Invoke();
@@ -300,32 +442,48 @@ namespace ArrowGame
             HintPurchaseFailed?.Invoke(string.IsNullOrWhiteSpace(errorMessage) ? "Hint purchase failed." : errorMessage);
         }
 
-        public void OnLivesPurchaseSuccess(string json)
+        public void OnRevivePurchaseSuccess(string json)
         {
-            if (!string.IsNullOrWhiteSpace(json))
-                TryApplyBridgeSnapshot(json);
+            if (TryApplyBridgeSnapshot(json))
+                bootstrapRetryCount = 0;
 
             ResolveInitialState();
+            RevivePurchaseSucceeded?.Invoke();
             LivesPurchaseSucceeded?.Invoke();
+        }
+
+        public void OnRevivePurchaseFailed(string errorMessage)
+        {
+            string message = string.IsNullOrWhiteSpace(errorMessage) ? "Revive purchase failed." : errorMessage;
+            RevivePurchaseFailed?.Invoke(message);
+            LivesPurchaseFailed?.Invoke(message);
+        }
+
+        public void OnLivesPurchaseSuccess(string json)
+        {
+            OnRevivePurchaseSuccess(json);
         }
 
         public void OnLivesPurchaseFailed(string errorMessage)
         {
-            LivesPurchaseFailed?.Invoke(string.IsNullOrWhiteSpace(errorMessage) ? "Lives purchase failed." : errorMessage);
+            OnRevivePurchaseFailed(errorMessage);
         }
 
         public void OnChallengeLeaderboardReceived(string json)
         {
             if (string.IsNullOrWhiteSpace(json))
+            {
+                GameDataStore.ApplyChallengeLeaderboard(
+                    new List<ChallengeLeaderboardEntryData>(),
+                    Mathf.Max(0, lastRequestedLeaderboardCycleIndex),
+                    lastRequestedLeaderboardPatternName);
                 return;
+            }
 
             ChallengeLeaderboardBridgeEntry[] bridgeEntries = TryParseLeaderboardEntries(json);
-            if (bridgeEntries == null || bridgeEntries.Length == 0)
-                return;
-
-            List<ChallengeLeaderboardEntryData> entries = new(bridgeEntries.Length);
+            List<ChallengeLeaderboardEntryData> entries = new(bridgeEntries != null ? bridgeEntries.Length : 0);
             string walletAddress = GameDataStore.WalletAddress;
-            for (int i = 0; i < bridgeEntries.Length; i++)
+            for (int i = 0; bridgeEntries != null && i < bridgeEntries.Length; i++)
             {
                 ChallengeLeaderboardBridgeEntry entry = bridgeEntries[i];
                 entries.Add(new ChallengeLeaderboardEntryData
@@ -338,10 +496,23 @@ namespace ArrowGame
                 });
             }
 
-            GameDataStore.ApplyChallengeLeaderboard(entries);
+            GameDataStore.ApplyChallengeLeaderboard(
+                entries,
+                Mathf.Max(0, lastRequestedLeaderboardCycleIndex),
+                lastRequestedLeaderboardPatternName);
         }
 
-        public void OnBridgeLog(string message)
+        public void OnLeaderboardSubmitted(string _)
+        {
+            ChallengeLeaderboardSubmitted?.Invoke();
+        }
+
+        public void OnLeaderboardSubmitFailed(string errorMessage)
+        {
+            ChallengeLeaderboardSubmitFailed?.Invoke(string.IsNullOrWhiteSpace(errorMessage) ? "Leaderboard submit failed." : errorMessage);
+        }
+
+        public void OnBridgeLogReceived(string message)
         {
             if (string.IsNullOrWhiteSpace(message))
                 return;
@@ -350,18 +521,50 @@ namespace ArrowGame
             BridgeLogReceived?.Invoke(message);
         }
 
-        private void TryApplyBridgeSnapshot(string json)
+        private IEnumerator RetryBootstrapAfterDelay()
         {
+            yield return new WaitForSecondsRealtime(BootstrapRetryDelaySeconds);
+            bootstrapRetryCoroutine = null;
+            RequestBootstrap();
+        }
+
+        private bool TryApplyBridgeSnapshot(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                return false;
+
             try
             {
                 MiniPayUserSnapshotData snapshot = JsonUtility.FromJson<MiniPayUserSnapshotData>(json);
-                if (snapshot != null)
-                    GameDataStore.ApplyBridgeSnapshot(snapshot);
+                if (!IsUsableSnapshot(snapshot))
+                    return false;
+
+                GameDataStore.ApplyBridgeSnapshot(snapshot);
+                return true;
             }
             catch (Exception exception)
             {
                 Debug.LogWarning($"MiniPayBridge failed to parse snapshot: {exception.Message}");
             }
+
+            return false;
+        }
+
+        private static bool IsUsableSnapshot(MiniPayUserSnapshotData snapshot)
+        {
+            if (snapshot == null)
+                return false;
+
+            return !string.IsNullOrWhiteSpace(snapshot.walletAddress) ||
+                   !string.IsNullOrWhiteSpace(snapshot.username) ||
+                   snapshot.hasPurchasedGame ||
+                   snapshot.tutorialCompleted ||
+                   snapshot.hints > 0 ||
+                   snapshot.revives >= 0 ||
+                   snapshot.lives >= 0 ||
+                   snapshot.classic != null ||
+                   snapshot.challenge != null ||
+                   snapshot.universal != null;
         }
 
         private void ResolveInitialState()
