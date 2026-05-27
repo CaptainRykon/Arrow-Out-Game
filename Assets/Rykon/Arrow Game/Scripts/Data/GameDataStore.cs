@@ -99,11 +99,6 @@ namespace ArrowGame.Data
 
         public static bool HasResolvedBridgeBootstrap => bridgeBootstrapResolved;
 
-        public static bool TryGetSharedChallengeWindow(out int cycleIndex, out DateTime endUtc)
-        {
-            return TryGetUniversalChallengeWindow(out cycleIndex, out endUtc);
-        }
-
         public static string WalletAddress
         {
             get => PlayerPrefs.GetString(WalletAddressKey, string.Empty);
@@ -200,7 +195,7 @@ namespace ArrowGame.Data
 
         public static bool HasCompletedTutorial
         {
-            get => HasPurchasedGame || GetBool(TutorialCompletedKey);
+            get => GetBool(TutorialCompletedKey);
             set => SaveBool(TutorialCompletedKey, value, syncBridge: false);
         }
 
@@ -237,7 +232,7 @@ namespace ArrowGame.Data
         public static void MarkTutorialCompleted()
         {
             HasCompletedTutorial = true;
-            NotifyDataChanged(syncBridge: true);
+            NotifyDataChanged(syncBridge: false);
         }
 
         public static void MarkBridgeBootstrapResolved()
@@ -284,12 +279,7 @@ namespace ArrowGame.Data
                     SaveLongRaw(ChallengeLastResetUnixMillisecondsKey, Math.Max(0L, snapshot.challenge.lastResetUnixMilliseconds));
 
                     if (snapshot.challenge.bestTimeSeconds > 0f)
-                    {
-                        int bestTimeCycleIndex = snapshot.universal != null && snapshot.universal.weeklyChallengeCycleIndex >= 0
-                            ? snapshot.universal.weeklyChallengeCycleIndex
-                            : GetCurrentChallengeCycleIndex(DateTime.UtcNow);
-                        PlayerPrefs.SetFloat(GetChallengeBestTimeKey(bestTimeCycleIndex), snapshot.challenge.bestTimeSeconds);
-                    }
+                        PlayerPrefs.SetFloat(GetChallengeBestTimeKey(GetCurrentChallengeCycleIndex(DateTime.UtcNow)), snapshot.challenge.bestTimeSeconds);
                 }
 
                 if (snapshot.universal != null)
@@ -324,8 +314,8 @@ namespace ArrowGame.Data
         public static MiniPayUserSnapshotData BuildBridgeSnapshot(DateTime utcNow)
         {
             DateTime normalizedUtcNow = utcNow.ToUniversalTime();
+            int cycleIndex = GetCurrentChallengeCycleIndex(normalizedUtcNow);
             RefreshChallengeChances(normalizedUtcNow, syncBridgeIfChanged: false);
-            bool hasSharedChallengeWindow = TryGetUniversalChallengeWindow(out int sharedCycleIndex, out DateTime sharedChallengeEndUtc);
 
             return new MiniPayUserSnapshotData
             {
@@ -348,10 +338,8 @@ namespace ArrowGame.Data
                 },
                 universal = new MiniPayUniversalProgressData
                 {
-                    weeklyChallengeCycleIndex = hasSharedChallengeWindow ? sharedCycleIndex : -1,
-                    weeklyChallengeEndUnixMilliseconds = hasSharedChallengeWindow
-                        ? ToUnixMilliseconds(sharedChallengeEndUtc)
-                        : -1
+                    weeklyChallengeCycleIndex = GetCurrentChallengeCycleIndex(normalizedUtcNow),
+                    weeklyChallengeEndUnixMilliseconds = ToUnixMilliseconds(GetCurrentChallengeCycleEndUtc(normalizedUtcNow))
                 }
             };
         }
@@ -528,13 +516,8 @@ namespace ArrowGame.Data
 
         public static void ApplyChallengeLeaderboard(List<ChallengeLeaderboardEntryData> entries, DateTime utcNow, string patternName)
         {
-            ApplyChallengeLeaderboard(entries, GetCurrentChallengeCycleIndex(utcNow), patternName);
-        }
-
-        public static void ApplyChallengeLeaderboard(List<ChallengeLeaderboardEntryData> entries, int cycleIndex, string patternName)
-        {
             hasRemoteChallengeLeaderboardSnapshot = true;
-            remoteChallengeLeaderboardCycleIndex = Mathf.Max(0, cycleIndex);
+            remoteChallengeLeaderboardCycleIndex = GetCurrentChallengeCycleIndex(utcNow);
             remoteChallengeLeaderboardPatternName = patternName?.Trim() ?? string.Empty;
             remoteChallengeLeaderboard.Clear();
             if (entries != null)
@@ -562,25 +545,10 @@ namespace ArrowGame.Data
             return EnsureChallengeLeaderboardCacheValidity(utcNow, patternName, false);
         }
 
-        public static bool HasChallengeLeaderboardSnapshot(int cycleIndex, string patternName)
-        {
-            return EnsureChallengeLeaderboardCacheValidity(cycleIndex, patternName, false);
-        }
-
         public static List<ChallengeLeaderboardEntryData> GetChallengeLeaderboardEntries(DateTime utcNow, string patternName, int entryCount)
         {
             EnsureChallengeLeaderboardCacheValidity(utcNow, patternName, true);
-            return BuildChallengeLeaderboardEntries(utcNow, entryCount);
-        }
 
-        public static List<ChallengeLeaderboardEntryData> GetChallengeLeaderboardEntries(int cycleIndex, DateTime utcNow, string patternName, int entryCount)
-        {
-            EnsureChallengeLeaderboardCacheValidity(cycleIndex, patternName, true);
-            return BuildChallengeLeaderboardEntries(utcNow, entryCount);
-        }
-
-        private static List<ChallengeLeaderboardEntryData> BuildChallengeLeaderboardEntries(DateTime utcNow, int entryCount)
-        {
             if (remoteChallengeLeaderboard.Count == 0)
                 return BuildLocalChallengeLeaderboard(utcNow, entryCount);
 
@@ -624,16 +592,12 @@ namespace ArrowGame.Data
 
         private static bool EnsureChallengeLeaderboardCacheValidity(DateTime utcNow, string patternName, bool clearIfInvalid)
         {
-            return EnsureChallengeLeaderboardCacheValidity(GetCurrentChallengeCycleIndex(utcNow), patternName, clearIfInvalid);
-        }
-
-        private static bool EnsureChallengeLeaderboardCacheValidity(int cycleIndex, string patternName, bool clearIfInvalid)
-        {
             if (!hasRemoteChallengeLeaderboardSnapshot)
                 return false;
 
+            int cycleIndex = GetCurrentChallengeCycleIndex(utcNow);
             string safePatternName = patternName?.Trim() ?? string.Empty;
-            bool isValid = remoteChallengeLeaderboardCycleIndex == Mathf.Max(0, cycleIndex) &&
+            bool isValid = remoteChallengeLeaderboardCycleIndex == cycleIndex &&
                            string.Equals(remoteChallengeLeaderboardPatternName, safePatternName, StringComparison.Ordinal);
 
             if (!isValid && clearIfInvalid)

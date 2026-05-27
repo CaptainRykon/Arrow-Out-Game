@@ -14,7 +14,6 @@ namespace ArrowGame
         private const string MenuSceneName = "MenuScene";
         private const int LeaderboardEntryLimit = 25;
         private const float MintStatusDisplaySeconds = 6f;
-        private const float SharedChallengeWindowWaitSeconds = 2.5f;
 
         [Header("Core")]
         [SerializeField] private ArrowGameManager arrowGameManager;
@@ -69,7 +68,8 @@ namespace ArrowGame
 
         private void Start()
         {
-            StartCoroutine(BeginChallengeSceneAfterBootstrapCO());
+            StartChallengeFlow();
+            EnsureLeaderboardRequested(false);
         }
 
         private void OnEnable()
@@ -203,25 +203,6 @@ namespace ArrowGame
             runTimerActive = true;
         }
 
-        private IEnumerator BeginChallengeSceneAfterBootstrapCO()
-        {
-            if (!GameDataStore.TryGetSharedChallengeWindow(out _, out _))
-            {
-                MiniPayBridge.Instance.RequestBootstrap();
-                float timeoutAt = Time.realtimeSinceStartup + SharedChallengeWindowWaitSeconds;
-                while (!GameDataStore.TryGetSharedChallengeWindow(out _, out _) &&
-                       !GameDataStore.HasResolvedBridgeBootstrap &&
-                       Time.realtimeSinceStartup < timeoutAt)
-                {
-                    yield return null;
-                }
-            }
-
-            RefreshLeaderboardUi();
-            StartChallengeFlow();
-            EnsureLeaderboardRequested(false);
-        }
-
         private void HandleChallengeCompleted()
         {
             runTimerActive = false;
@@ -326,10 +307,11 @@ namespace ArrowGame
             ApplySceneTheme();
 
             DateTime nowUtc = DateTime.UtcNow;
-            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName);
             int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
-            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(cycleIndex, nowUtc, patternName, Mathf.Max(leaderboardViewCount, LeaderboardEntryLimit));
+            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(nowUtc, GetCurrentPatternName(nowUtc), Mathf.Max(leaderboardViewCount, LeaderboardEntryLimit));
             float playerBestTime = GameDataStore.GetChallengeBestTimeSeconds(nowUtc);
+            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            string patternName = GetCurrentPatternName(nowUtc);
 
             if (leaderboardTitleText != null)
                 leaderboardTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1} - {patternName}";
@@ -385,8 +367,8 @@ namespace ArrowGame
         private void EnsureLeaderboardRequested(bool forceRefresh)
         {
             DateTime nowUtc = DateTime.UtcNow;
-            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName);
-            if (!forceRefresh && GameDataStore.HasChallengeLeaderboardSnapshot(cycleIndex, patternName))
+            string patternName = GetCurrentPatternName(nowUtc);
+            if (!forceRefresh && GameDataStore.HasChallengeLeaderboardSnapshot(nowUtc, patternName))
                 return;
 
             MiniPayBridge.Instance.RequestChallengeLeaderboard(patternName, LeaderboardEntryLimit);
@@ -416,26 +398,10 @@ namespace ArrowGame
 
         private string GetCurrentPatternName(DateTime nowUtc)
         {
-            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName);
-            return string.IsNullOrWhiteSpace(patternName) ? $"Pattern {cycleIndex + 1}" : patternName;
-        }
-
-        private void ResolveChallengeCycleDisplay(DateTime nowUtc, out int cycleIndex, out string patternName)
-        {
-            if (GameDataStore.TryGetSharedChallengeWindow(out int sharedCycleIndex, out _))
-            {
-                cycleIndex = Mathf.Max(0, sharedCycleIndex);
-                int patternIndex = Mathf.Max(0, cycleIndex) % Mathf.Max(challengePatternNames.Length, 1);
-                patternName = challengePatternNames.Length > 0
-                    ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
-                    : $"Pattern {cycleIndex + 1}";
-                return;
-            }
-
-            cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            int fallbackPatternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
-            patternName = challengePatternNames.Length > 0
-                ? challengePatternNames[Mathf.Clamp(fallbackPatternIndex, 0, challengePatternNames.Length - 1)]
+            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
+            return challengePatternNames.Length > 0
+                ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
                 : $"Pattern {cycleIndex + 1}";
         }
 

@@ -327,14 +327,7 @@ namespace ArrowGame
                 return;
             }
 
-            if (!CanDecideTutorialGate())
-            {
-                MiniPayBridge.Instance.RequestBootstrap();
-                BeginEntryFlowResolution();
-                return;
-            }
-
-            SceneManager.LoadScene(ShouldSkipTutorial() ? GameSceneName : TutorialSceneName);
+            SceneManager.LoadScene(GameDataStore.HasCompletedTutorial ? GameSceneName : TutorialSceneName);
         }
 
         public void PlayChallenge()
@@ -753,7 +746,8 @@ namespace ArrowGame
         private void RefreshLeaderboardUi()
         {
             DateTime nowUtc = DateTime.UtcNow;
-            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName, out _);
+            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            string patternName = GetCurrentPatternName(nowUtc);
             float playerBestTime = GameDataStore.GetChallengeBestTimeSeconds(nowUtc);
 
             if (leaderboardTitleText != null)
@@ -767,7 +761,7 @@ namespace ArrowGame
             }
 
             int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
-            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(cycleIndex, nowUtc, patternName, Mathf.Max(leaderboardViewCount, LeaderboardEntryLimit));
+            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(nowUtc, patternName, Mathf.Max(leaderboardViewCount, LeaderboardEntryLimit));
             for (int i = 0; i < leaderboardViewCount; i++)
             {
                 ChallengeLeaderboardEntryData entryData = i < entries.Count ? entries[i] : null;
@@ -781,8 +775,8 @@ namespace ArrowGame
         private void EnsureLeaderboardRequested(bool forceRefresh)
         {
             DateTime nowUtc = DateTime.UtcNow;
-            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName, out _);
-            if (!forceRefresh && GameDataStore.HasChallengeLeaderboardSnapshot(cycleIndex, patternName))
+            string patternName = GetCurrentPatternName(nowUtc);
+            if (!forceRefresh && GameDataStore.HasChallengeLeaderboardSnapshot(nowUtc, patternName))
                 return;
 
             MiniPayBridge.Instance.RequestChallengeLeaderboard(patternName, LeaderboardEntryLimit);
@@ -1341,7 +1335,12 @@ namespace ArrowGame
         {
             DateTime nowUtc = DateTime.UtcNow;
             int chancesRemaining = GameDataStore.GetChallengeChancesRemainingToday(nowUtc);
-            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName, out TimeSpan timeRemaining);
+            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            string[] patternNames = GetResolvedChallengePatternNames();
+            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, patternNames.Length);
+            string patternName = patternNames.Length > 0
+                ? patternNames[Mathf.Clamp(patternIndex, 0, patternNames.Length - 1)]
+                : $"Pattern {cycleIndex + 1}";
 
             if (challengeTitleText != null)
                 challengeTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1}";
@@ -1350,7 +1349,7 @@ namespace ArrowGame
                 challengePatternText.text = patternName;
 
             if (challengeCycleTimerText != null)
-                challengeCycleTimerText.text = FormatCountdown(timeRemaining);
+                challengeCycleTimerText.text = FormatCountdown(GameDataStore.GetCurrentChallengeTimeRemaining(nowUtc));
 
             if (challengeChanceText != null)
                 challengeChanceText.text = chancesRemaining > 0 ? $"{chancesRemaining} chance left" : "0 chances left";
@@ -1418,7 +1417,7 @@ namespace ArrowGame
                 return;
             }
 
-            if (ShouldOpenTutorial())
+            if (!GameDataStore.HasCompletedTutorial)
             {
                 SceneManager.LoadScene(TutorialSceneName);
                 return;
@@ -1432,7 +1431,7 @@ namespace ArrowGame
         {
             entryFlowResolved = false;
 
-            if (ShouldOpenTutorial())
+            if (!GameDataStore.HasCompletedTutorial)
             {
                 SetTabState(false, false, false);
                 return;
@@ -1447,23 +1446,6 @@ namespace ArrowGame
         private bool ShouldShowPurchaseGate()
         {
             return GameDataStore.HasCompletedTutorial && !GameDataStore.HasPurchasedGame;
-        }
-
-        private bool ShouldSkipTutorial()
-        {
-            return GameDataStore.HasPurchasedGame || GameDataStore.HasCompletedTutorial;
-        }
-
-        private bool CanDecideTutorialGate()
-        {
-            return GameDataStore.HasResolvedBridgeBootstrap || ShouldSkipTutorial();
-        }
-
-        private bool ShouldOpenTutorial()
-        {
-            return GameDataStore.HasResolvedBridgeBootstrap &&
-                   !GameDataStore.HasPurchasedGame &&
-                   !GameDataStore.HasCompletedTutorial;
         }
 
         private bool CanInteractWithMenu()
@@ -1684,8 +1666,12 @@ namespace ArrowGame
 
         private string GetCurrentPatternName(DateTime nowUtc)
         {
-            ResolveChallengeCycleDisplay(nowUtc, out int cycleIndex, out string patternName, out _);
-            return string.IsNullOrWhiteSpace(patternName) ? $"Pattern {cycleIndex + 1}" : patternName;
+            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
+            string[] patternNames = GetResolvedChallengePatternNames();
+            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, patternNames.Length);
+            return patternNames.Length > 0
+                ? patternNames[Mathf.Clamp(patternIndex, 0, patternNames.Length - 1)]
+                : $"Pattern {cycleIndex + 1}";
         }
 
         private string[] GetResolvedChallengePatternNames()
@@ -1693,31 +1679,6 @@ namespace ArrowGame
             return challengePatternNames != null && challengePatternNames.Length > 0
                 ? challengePatternNames
                 : DefaultChallengePatternNames;
-        }
-
-        private void ResolveChallengeCycleDisplay(DateTime nowUtc, out int cycleIndex, out string patternName, out TimeSpan timeRemaining)
-        {
-            string[] patternNames = GetResolvedChallengePatternNames();
-            if (GameDataStore.TryGetSharedChallengeWindow(out int sharedCycleIndex, out DateTime sharedEndUtc))
-            {
-                cycleIndex = Mathf.Max(0, sharedCycleIndex);
-                int patternIndex = Mathf.Max(0, cycleIndex) % Mathf.Max(patternNames.Length, 1);
-                patternName = patternNames.Length > 0
-                    ? patternNames[Mathf.Clamp(patternIndex, 0, patternNames.Length - 1)]
-                    : $"Pattern {cycleIndex + 1}";
-                timeRemaining = sharedEndUtc - nowUtc.ToUniversalTime();
-                return;
-            }
-
-            if (!GameDataStore.HasResolvedBridgeBootstrap && Application.isPlaying)
-                MiniPayBridge.Instance.RequestBootstrap();
-
-            cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            int fallbackPatternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, patternNames.Length);
-            patternName = patternNames.Length > 0
-                ? patternNames[Mathf.Clamp(fallbackPatternIndex, 0, patternNames.Length - 1)]
-                : $"Pattern {cycleIndex + 1}";
-            timeRemaining = GameDataStore.GetCurrentChallengeTimeRemaining(nowUtc);
         }
 
         private void NormalizeLeaderboardPanelLayout()

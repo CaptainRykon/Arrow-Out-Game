@@ -60,7 +60,6 @@ namespace ArrowGame
         private const int MaxBootstrapRetryCount = 6;
 
         private static MiniPayBridge instance;
-        private int lastRequestedLeaderboardCycleIndex = -1;
         private string lastRequestedLeaderboardPatternName = string.Empty;
         private Coroutine queuedUserStateSyncCoroutine;
         private Coroutine bootstrapRetryCoroutine;
@@ -318,15 +317,11 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
 
         public void SubmitChallengeResult(float completionSeconds, string patternName)
         {
-            int cycleIndex = GameDataStore.TryGetSharedChallengeWindow(out int sharedCycleIndex, out _)
-                ? sharedCycleIndex
-                : GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow);
-
             ChallengeResultPayload payload = new()
             {
                 walletAddress = GameDataStore.WalletAddress,
                 playerName = GameDataStore.ChallengePlayerName,
-                cycleIndex = cycleIndex,
+                cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow),
                 patternName = patternName,
                 completionSeconds = Mathf.Max(0f, completionSeconds)
             };
@@ -343,13 +338,10 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
         public void RequestChallengeLeaderboard(string patternName, int limit = DefaultLeaderboardRequestLimit)
         {
             lastRequestedLeaderboardPatternName = patternName?.Trim() ?? string.Empty;
-            lastRequestedLeaderboardCycleIndex = GameDataStore.TryGetSharedChallengeWindow(out int sharedCycleIndex, out _)
-                ? sharedCycleIndex
-                : GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow);
 
             ChallengeLeaderboardRequestPayload payload = new()
             {
-                cycleIndex = lastRequestedLeaderboardCycleIndex,
+                cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow),
                 patternName = lastRequestedLeaderboardPatternName,
                 limit = Mathf.Max(1, limit),
                 walletAddress = GameDataStore.WalletAddress
@@ -473,10 +465,7 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
         {
             if (string.IsNullOrWhiteSpace(json))
             {
-                GameDataStore.ApplyChallengeLeaderboard(
-                    new List<ChallengeLeaderboardEntryData>(),
-                    Mathf.Max(0, lastRequestedLeaderboardCycleIndex),
-                    lastRequestedLeaderboardPatternName);
+                GameDataStore.ApplyChallengeLeaderboard(new List<ChallengeLeaderboardEntryData>(), DateTime.UtcNow, lastRequestedLeaderboardPatternName);
                 return;
             }
 
@@ -496,10 +485,7 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
                 });
             }
 
-            GameDataStore.ApplyChallengeLeaderboard(
-                entries,
-                Mathf.Max(0, lastRequestedLeaderboardCycleIndex),
-                lastRequestedLeaderboardPatternName);
+            GameDataStore.ApplyChallengeLeaderboard(entries, DateTime.UtcNow, lastRequestedLeaderboardPatternName);
         }
 
         public void OnLeaderboardSubmitted(string _)
