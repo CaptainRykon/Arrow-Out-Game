@@ -313,6 +313,7 @@ namespace ArrowGame
             float playerBestTime = GameDataStore.GetChallengeBestTimeSeconds(nowUtc);
             int cycleIndex = GameDataStore.GetDisplayedChallengeLeaderboardCycleIndex(nowUtc);
             string patternName = GameDataStore.GetDisplayedChallengeLeaderboardPatternName(nowUtc, challengePatternNames);
+            Debug.Log($"Challenge leaderboard rendering {entries.Count} entries across {leaderboardViewCount} row views for cycle {cycleIndex}, pattern '{patternName}'.");
 
             if (leaderboardTitleText != null)
                 leaderboardTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1} - {patternName}";

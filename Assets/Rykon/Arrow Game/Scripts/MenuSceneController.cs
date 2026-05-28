@@ -762,6 +762,7 @@ namespace ArrowGame
 
             int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
             List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(nowUtc, patternName, Mathf.Max(leaderboardViewCount, LeaderboardEntryLimit));
+            Debug.Log($"Menu leaderboard rendering {entries.Count} entries across {leaderboardViewCount} row views for cycle {cycleIndex}, pattern '{patternName}'.");
             for (int i = 0; i < leaderboardViewCount; i++)
             {
                 ChallengeLeaderboardEntryData entryData = i < entries.Count ? entries[i] : null;

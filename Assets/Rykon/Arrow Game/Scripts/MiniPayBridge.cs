@@ -471,6 +471,7 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
         {
             if (string.IsNullOrWhiteSpace(json))
             {
+                Debug.LogWarning("MiniPayBridge received empty leaderboard payload.");
                 GameDataStore.ApplyChallengeLeaderboard(
                     new List<ChallengeLeaderboardEntryData>(),
                     Mathf.Max(0, lastRequestedLeaderboardCycleIndex),
@@ -482,6 +483,7 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
             string resolvedPatternName = lastRequestedLeaderboardPatternName;
             ChallengeLeaderboardBridgeEntry[] bridgeEntries = TryParseLeaderboardEntries(json);
             TryParseLeaderboardMetadata(json, ref resolvedCycleIndex, ref resolvedPatternName);
+            Debug.Log($"MiniPayBridge leaderboard parsed {bridgeEntries?.Length ?? 0} entries for cycle {resolvedCycleIndex}, pattern '{resolvedPatternName}'.");
             List<ChallengeLeaderboardEntryData> entries = new(bridgeEntries != null ? bridgeEntries.Length : 0);
             string walletAddress = GameDataStore.WalletAddress;
             for (int i = 0; bridgeEntries != null && i < bridgeEntries.Length; i++)
