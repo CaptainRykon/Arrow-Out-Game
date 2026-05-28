@@ -33,6 +33,7 @@ namespace ArrowGame.Data
     {
         public int weeklyChallengeCycleIndex = -1;
         public long weeklyChallengeEndUnixMilliseconds = -1;
+        public string weeklyChallengePatternName = string.Empty;
     }
 
     [Serializable]
@@ -67,6 +68,7 @@ namespace ArrowGame.Data
         private const string ChallengePendingRetryUtcDayKey = "challenge_pending_retry_utc_day";
         private const string UniversalChallengeCycleIndexKey = "universal_challenge_cycle_index";
         private const string UniversalChallengeEndUnixMillisecondsKey = "universal_challenge_end_unix_ms";
+        private const string UniversalChallengePatternNameKey = "universal_challenge_pattern_name";
         private const string VibrationEnabledKey = "vibration_enabled";
         private const string SoundEnabledKey = "sound_enabled";
         private const string DarkModeEnabledKey = "dark_mode_enabled";
@@ -279,7 +281,12 @@ namespace ArrowGame.Data
                     SaveLongRaw(ChallengeLastResetUnixMillisecondsKey, Math.Max(0L, snapshot.challenge.lastResetUnixMilliseconds));
 
                     if (snapshot.challenge.bestTimeSeconds > 0f)
-                        PlayerPrefs.SetFloat(GetChallengeBestTimeKey(GetCurrentChallengeCycleIndex(DateTime.UtcNow)), snapshot.challenge.bestTimeSeconds);
+                    {
+                        int bestTimeCycleIndex = snapshot.universal != null && snapshot.universal.weeklyChallengeCycleIndex >= 0
+                            ? snapshot.universal.weeklyChallengeCycleIndex
+                            : GetCurrentChallengeCycleIndex(DateTime.UtcNow);
+                        PlayerPrefs.SetFloat(GetChallengeBestTimeKey(bestTimeCycleIndex), snapshot.challenge.bestTimeSeconds);
+                    }
                 }
 
                 if (snapshot.universal != null)
@@ -289,6 +296,11 @@ namespace ArrowGame.Data
 
                     if (snapshot.universal.weeklyChallengeEndUnixMilliseconds > 0)
                         SaveLongRaw(UniversalChallengeEndUnixMillisecondsKey, snapshot.universal.weeklyChallengeEndUnixMilliseconds);
+
+                    if (!string.IsNullOrWhiteSpace(snapshot.universal.weeklyChallengePatternName))
+                        PlayerPrefs.SetString(UniversalChallengePatternNameKey, snapshot.universal.weeklyChallengePatternName.Trim());
+                    else
+                        PlayerPrefs.DeleteKey(UniversalChallengePatternNameKey);
                 }
 
                 if (snapshot.tutorialCompleted)
@@ -339,7 +351,8 @@ namespace ArrowGame.Data
                 universal = new MiniPayUniversalProgressData
                 {
                     weeklyChallengeCycleIndex = GetCurrentChallengeCycleIndex(normalizedUtcNow),
-                    weeklyChallengeEndUnixMilliseconds = ToUnixMilliseconds(GetCurrentChallengeCycleEndUtc(normalizedUtcNow))
+                    weeklyChallengeEndUnixMilliseconds = ToUnixMilliseconds(GetCurrentChallengeCycleEndUtc(normalizedUtcNow)),
+                    weeklyChallengePatternName = GetSharedChallengePatternName()
                 }
             };
         }
@@ -504,6 +517,25 @@ namespace ArrowGame.Data
         {
             int safePatternCount = Mathf.Max(patternCount, 1);
             return GetCurrentChallengeCycleIndex(utcNow) % safePatternCount;
+        }
+
+        public static string GetSharedChallengePatternName()
+        {
+            return PlayerPrefs.GetString(UniversalChallengePatternNameKey, string.Empty).Trim();
+        }
+
+        public static string GetCurrentChallengePatternName(DateTime utcNow, string[] fallbackPatternNames)
+        {
+            string sharedPatternName = GetSharedChallengePatternName();
+            if (!string.IsNullOrWhiteSpace(sharedPatternName))
+                return sharedPatternName;
+
+            string[] safePatternNames = fallbackPatternNames ?? Array.Empty<string>();
+            int cycleIndex = GetCurrentChallengeCycleIndex(utcNow);
+            int patternIndex = GetCurrentChallengePatternIndex(utcNow, safePatternNames.Length);
+            return safePatternNames.Length > 0
+                ? safePatternNames[Mathf.Clamp(patternIndex, 0, safePatternNames.Length - 1)]
+                : $"Pattern {cycleIndex + 1}";
         }
 
         public static int GetCurrentChallengeSeed(DateTime utcNow, int seedOffset = 0)

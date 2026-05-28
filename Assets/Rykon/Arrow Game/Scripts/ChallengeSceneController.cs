@@ -398,11 +398,7 @@ namespace ArrowGame
 
         private string GetCurrentPatternName(DateTime nowUtc)
         {
-            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, challengePatternNames.Length);
-            return challengePatternNames.Length > 0
-                ? challengePatternNames[Mathf.Clamp(patternIndex, 0, challengePatternNames.Length - 1)]
-                : $"Pattern {cycleIndex + 1}";
+            return GameDataStore.GetCurrentChallengePatternName(nowUtc, challengePatternNames);
         }
 
         private static string FormatTime(float seconds)

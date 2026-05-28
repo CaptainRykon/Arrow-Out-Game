@@ -1336,11 +1336,7 @@ namespace ArrowGame
             DateTime nowUtc = DateTime.UtcNow;
             int chancesRemaining = GameDataStore.GetChallengeChancesRemainingToday(nowUtc);
             int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            string[] patternNames = GetResolvedChallengePatternNames();
-            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, patternNames.Length);
-            string patternName = patternNames.Length > 0
-                ? patternNames[Mathf.Clamp(patternIndex, 0, patternNames.Length - 1)]
-                : $"Pattern {cycleIndex + 1}";
+            string patternName = GetCurrentPatternName(nowUtc);
 
             if (challengeTitleText != null)
                 challengeTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1}";
@@ -1666,12 +1662,7 @@ namespace ArrowGame
 
         private string GetCurrentPatternName(DateTime nowUtc)
         {
-            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            string[] patternNames = GetResolvedChallengePatternNames();
-            int patternIndex = GameDataStore.GetCurrentChallengePatternIndex(nowUtc, patternNames.Length);
-            return patternNames.Length > 0
-                ? patternNames[Mathf.Clamp(patternIndex, 0, patternNames.Length - 1)]
-                : $"Pattern {cycleIndex + 1}";
+            return GameDataStore.GetCurrentChallengePatternName(nowUtc, GetResolvedChallengePatternNames());
         }
 
         private string[] GetResolvedChallengePatternNames()
