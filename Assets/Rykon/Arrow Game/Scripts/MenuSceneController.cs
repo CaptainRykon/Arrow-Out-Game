@@ -746,8 +746,8 @@ namespace ArrowGame
         private void RefreshLeaderboardUi()
         {
             DateTime nowUtc = DateTime.UtcNow;
-            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            string patternName = GetCurrentPatternName(nowUtc);
+            int cycleIndex = GameDataStore.GetDisplayedChallengeLeaderboardCycleIndex(nowUtc);
+            string patternName = GameDataStore.GetDisplayedChallengeLeaderboardPatternName(nowUtc, GetResolvedChallengePatternNames());
             float playerBestTime = GameDataStore.GetChallengeBestTimeSeconds(nowUtc);
 
             if (leaderboardTitleText != null)

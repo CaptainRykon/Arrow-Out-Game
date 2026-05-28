@@ -39,6 +39,10 @@ namespace ArrowGame
         [Serializable]
         private sealed class ChallengeLeaderboardPayload
         {
+            public int cycleIndex;
+            public int leaderboardCycleIndex;
+            public string patternName;
+            public string leaderboardPatternName;
             public ChallengeLeaderboardBridgeEntry[] entries;
         }
 
@@ -60,6 +64,7 @@ namespace ArrowGame
         private const int MaxBootstrapRetryCount = 6;
 
         private static MiniPayBridge instance;
+        private int lastRequestedLeaderboardCycleIndex = -1;
         private string lastRequestedLeaderboardPatternName = string.Empty;
         private Coroutine queuedUserStateSyncCoroutine;
         private Coroutine bootstrapRetryCoroutine;
@@ -338,10 +343,11 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
         public void RequestChallengeLeaderboard(string patternName, int limit = DefaultLeaderboardRequestLimit)
         {
             lastRequestedLeaderboardPatternName = patternName?.Trim() ?? string.Empty;
+            lastRequestedLeaderboardCycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow);
 
             ChallengeLeaderboardRequestPayload payload = new()
             {
-                cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(DateTime.UtcNow),
+                cycleIndex = lastRequestedLeaderboardCycleIndex,
                 patternName = lastRequestedLeaderboardPatternName,
                 limit = Mathf.Max(1, limit),
                 walletAddress = GameDataStore.WalletAddress
@@ -465,11 +471,17 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
         {
             if (string.IsNullOrWhiteSpace(json))
             {
-                GameDataStore.ApplyChallengeLeaderboard(new List<ChallengeLeaderboardEntryData>(), DateTime.UtcNow, lastRequestedLeaderboardPatternName);
+                GameDataStore.ApplyChallengeLeaderboard(
+                    new List<ChallengeLeaderboardEntryData>(),
+                    Mathf.Max(0, lastRequestedLeaderboardCycleIndex),
+                    lastRequestedLeaderboardPatternName);
                 return;
             }
 
+            int resolvedCycleIndex = lastRequestedLeaderboardCycleIndex;
+            string resolvedPatternName = lastRequestedLeaderboardPatternName;
             ChallengeLeaderboardBridgeEntry[] bridgeEntries = TryParseLeaderboardEntries(json);
+            TryParseLeaderboardMetadata(json, ref resolvedCycleIndex, ref resolvedPatternName);
             List<ChallengeLeaderboardEntryData> entries = new(bridgeEntries != null ? bridgeEntries.Length : 0);
             string walletAddress = GameDataStore.WalletAddress;
             for (int i = 0; bridgeEntries != null && i < bridgeEntries.Length; i++)
@@ -485,7 +497,7 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
                 });
             }
 
-            GameDataStore.ApplyChallengeLeaderboard(entries, DateTime.UtcNow, lastRequestedLeaderboardPatternName);
+            GameDataStore.ApplyChallengeLeaderboard(entries, resolvedCycleIndex, resolvedPatternName);
         }
 
         public void OnLeaderboardSubmitted(string _)
@@ -582,6 +594,29 @@ private static extern void MiniPayBridge_RequestLeaderboard(string payloadJson);
             catch
             {
                 return Array.Empty<ChallengeLeaderboardBridgeEntry>();
+            }
+        }
+
+        private static void TryParseLeaderboardMetadata(string json, ref int cycleIndex, ref string patternName)
+        {
+            try
+            {
+                ChallengeLeaderboardPayload payload = JsonUtility.FromJson<ChallengeLeaderboardPayload>(json);
+                if (payload == null)
+                    return;
+
+                int payloadCycleIndex = payload.cycleIndex >= 0 ? payload.cycleIndex : payload.leaderboardCycleIndex;
+                if (payloadCycleIndex >= 0)
+                    cycleIndex = payloadCycleIndex;
+
+                string payloadPatternName = !string.IsNullOrWhiteSpace(payload.patternName)
+                    ? payload.patternName
+                    : payload.leaderboardPatternName;
+                if (!string.IsNullOrWhiteSpace(payloadPatternName))
+                    patternName = payloadPatternName.Trim();
+            }
+            catch
+            {
             }
         }
 

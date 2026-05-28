@@ -308,10 +308,11 @@ namespace ArrowGame
 
             DateTime nowUtc = DateTime.UtcNow;
             int leaderboardViewCount = leaderboardEntryViews != null ? leaderboardEntryViews.Length : 0;
-            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(nowUtc, GetCurrentPatternName(nowUtc), Mathf.Max(leaderboardViewCount, LeaderboardEntryLimit));
+            string requestedPatternName = GetCurrentPatternName(nowUtc);
+            List<ChallengeLeaderboardEntryData> entries = GameDataStore.GetChallengeLeaderboardEntries(nowUtc, requestedPatternName, Mathf.Max(leaderboardViewCount, LeaderboardEntryLimit));
             float playerBestTime = GameDataStore.GetChallengeBestTimeSeconds(nowUtc);
-            int cycleIndex = GameDataStore.GetCurrentChallengeCycleIndex(nowUtc);
-            string patternName = GetCurrentPatternName(nowUtc);
+            int cycleIndex = GameDataStore.GetDisplayedChallengeLeaderboardCycleIndex(nowUtc);
+            string patternName = GameDataStore.GetDisplayedChallengeLeaderboardPatternName(nowUtc, challengePatternNames);
 
             if (leaderboardTitleText != null)
                 leaderboardTitleText.text = $"{challengeTitlePrefix} #{cycleIndex + 1} - {patternName}";

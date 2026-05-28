@@ -538,6 +538,26 @@ namespace ArrowGame.Data
                 : $"Pattern {cycleIndex + 1}";
         }
 
+        public static bool HasRemoteChallengeLeaderboardSnapshot()
+        {
+            return hasRemoteChallengeLeaderboardSnapshot;
+        }
+
+        public static int GetDisplayedChallengeLeaderboardCycleIndex(DateTime utcNow)
+        {
+            return hasRemoteChallengeLeaderboardSnapshot
+                ? Mathf.Max(0, remoteChallengeLeaderboardCycleIndex)
+                : GetCurrentChallengeCycleIndex(utcNow);
+        }
+
+        public static string GetDisplayedChallengeLeaderboardPatternName(DateTime utcNow, string[] fallbackPatternNames)
+        {
+            if (hasRemoteChallengeLeaderboardSnapshot && !string.IsNullOrWhiteSpace(remoteChallengeLeaderboardPatternName))
+                return remoteChallengeLeaderboardPatternName;
+
+            return GetCurrentChallengePatternName(utcNow, fallbackPatternNames);
+        }
+
         public static int GetCurrentChallengeSeed(DateTime utcNow, int seedOffset = 0)
         {
             unchecked
@@ -548,8 +568,13 @@ namespace ArrowGame.Data
 
         public static void ApplyChallengeLeaderboard(List<ChallengeLeaderboardEntryData> entries, DateTime utcNow, string patternName)
         {
+            ApplyChallengeLeaderboard(entries, GetCurrentChallengeCycleIndex(utcNow), patternName);
+        }
+
+        public static void ApplyChallengeLeaderboard(List<ChallengeLeaderboardEntryData> entries, int cycleIndex, string patternName)
+        {
             hasRemoteChallengeLeaderboardSnapshot = true;
-            remoteChallengeLeaderboardCycleIndex = GetCurrentChallengeCycleIndex(utcNow);
+            remoteChallengeLeaderboardCycleIndex = Mathf.Max(0, cycleIndex);
             remoteChallengeLeaderboardPatternName = patternName?.Trim() ?? string.Empty;
             remoteChallengeLeaderboard.Clear();
             if (entries != null)
@@ -574,13 +599,11 @@ namespace ArrowGame.Data
 
         public static bool HasChallengeLeaderboardSnapshot(DateTime utcNow, string patternName)
         {
-            return EnsureChallengeLeaderboardCacheValidity(utcNow, patternName, false);
+            return hasRemoteChallengeLeaderboardSnapshot;
         }
 
         public static List<ChallengeLeaderboardEntryData> GetChallengeLeaderboardEntries(DateTime utcNow, string patternName, int entryCount)
         {
-            EnsureChallengeLeaderboardCacheValidity(utcNow, patternName, true);
-
             if (remoteChallengeLeaderboard.Count == 0)
                 return BuildLocalChallengeLeaderboard(utcNow, entryCount);
 
@@ -620,27 +643,6 @@ namespace ArrowGame.Data
             return entries.Count > safeEntryCount
                 ? entries.GetRange(0, safeEntryCount)
                 : entries;
-        }
-
-        private static bool EnsureChallengeLeaderboardCacheValidity(DateTime utcNow, string patternName, bool clearIfInvalid)
-        {
-            if (!hasRemoteChallengeLeaderboardSnapshot)
-                return false;
-
-            int cycleIndex = GetCurrentChallengeCycleIndex(utcNow);
-            string safePatternName = patternName?.Trim() ?? string.Empty;
-            bool isValid = remoteChallengeLeaderboardCycleIndex == cycleIndex &&
-                           string.Equals(remoteChallengeLeaderboardPatternName, safePatternName, StringComparison.Ordinal);
-
-            if (!isValid && clearIfInvalid)
-            {
-                hasRemoteChallengeLeaderboardSnapshot = false;
-                remoteChallengeLeaderboardCycleIndex = -1;
-                remoteChallengeLeaderboardPatternName = string.Empty;
-                remoteChallengeLeaderboard.Clear();
-            }
-
-            return isValid;
         }
 
         private static void RefreshChallengeChances(DateTime utcNow, bool syncBridgeIfChanged = true)
