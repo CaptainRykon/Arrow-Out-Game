@@ -599,7 +599,21 @@ namespace ArrowGame.Data
 
         public static bool HasChallengeLeaderboardSnapshot(DateTime utcNow, string patternName)
         {
-            return hasRemoteChallengeLeaderboardSnapshot;
+            if (!hasRemoteChallengeLeaderboardSnapshot)
+                return false;
+
+            int currentCycleIndex = GetCurrentChallengeCycleIndex(utcNow);
+            if (remoteChallengeLeaderboardCycleIndex != currentCycleIndex)
+                return false;
+
+            string requestedPatternName = patternName?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(requestedPatternName))
+                return true;
+
+            return string.Equals(
+                remoteChallengeLeaderboardPatternName,
+                requestedPatternName,
+                StringComparison.OrdinalIgnoreCase);
         }
 
         public static List<ChallengeLeaderboardEntryData> GetChallengeLeaderboardEntries(DateTime utcNow, string patternName, int entryCount)

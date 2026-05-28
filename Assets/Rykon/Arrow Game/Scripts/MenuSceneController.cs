@@ -385,7 +385,7 @@ namespace ArrowGame
                 leaderboardPanel.SetActive(true);
 
             NormalizeLeaderboardPanelLayout();
-            EnsureLeaderboardRequested(false);
+            EnsureLeaderboardRequested(true);
         }
 
         public void CloseLeaderboardPanel()
