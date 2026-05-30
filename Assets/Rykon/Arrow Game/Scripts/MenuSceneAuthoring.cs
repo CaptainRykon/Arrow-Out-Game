@@ -723,7 +723,7 @@ namespace ArrowGame
             bodyRect.anchorMax = new Vector2(0.88f, 0.74f);
             bodyRect.offsetMin = Vector2.zero;
             bodyRect.offsetMax = Vector2.zero;
-            CreateRectLabel(bodyRect, "Finish the tutorial, then pay once in MiniPay to unlock the full game.", 29f, new Color(0.28f, 0.31f, 0.48f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateRectLabel(bodyRect, "Finish the tutorial, then pay once to unlock the full game.", 29f, new Color(0.28f, 0.31f, 0.48f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
 
             RectTransform priceBadge = CreateRect("Purchase Gate Price Badge", card);
             priceBadge.anchorMin = new Vector2(0.5f, 0.5f);
@@ -786,7 +786,7 @@ namespace ArrowGame
             CreateStandaloneLabel(card, "Purchase Success Title", "Payment Successful", 44f, new Color(0.16f, 0.18f, 0.3f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
             CreateStandaloneLabel(card, "Purchase Success Body", "Welcome to Arrow Out. Enter your player name to continue.", 28f, new Color(0.28f, 0.31f, 0.48f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
             CreateInputField(card, "Purchase Success Name Input", "Enter your name");
-            CreateStandaloneLabel(card, "Purchase Success Status Text", "Your name will be saved to MiniPay.", 22f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateStandaloneLabel(card, "Purchase Success Status Text", "Your name will be saved.", 22f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
 
             Button okButton = CreateButton(card, "Purchase Success OK", new Vector2(0f, 92f));
             okButton.gameObject.name = "Purchase Success OK Button";
@@ -821,7 +821,7 @@ namespace ArrowGame
 
             CreateStandaloneLabel(card, "Hint Reward Title", "Free Hints Unlocked", 44f, new Color(0.16f, 0.18f, 0.3f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
             CreateStandaloneLabel(card, "Hint Reward Body", "Congrats! You received 5 free hints with your unlock purchase.", 28f, new Color(0.28f, 0.31f, 0.48f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
-            CreateStandaloneLabel(card, "Hint Reward Status Text", "These hints are saved to your MiniPay account.", 22f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateStandaloneLabel(card, "Hint Reward Status Text", "These hints are saved to your account.", 22f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
 
             Button okButton = CreateButton(card, "Hint Reward OK", new Vector2(0f, 92f));
             okButton.gameObject.name = "Hint Reward OK Button";
@@ -1165,7 +1165,7 @@ namespace ArrowGame
             layout.childForceExpandHeight = false;
 
             CreateStandaloneLabel(card, "Username Edit Title", "Change Your Name", 42f, new Color(0.16f, 0.18f, 0.3f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
-            CreateStandaloneLabel(card, "Username Edit Status", "Enter a new name and save it to your MiniPay profile.", 24f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
+            CreateStandaloneLabel(card, "Username Edit Status", "Enter a new name and save it to your profile.", 24f, new Color(0.35f, 0.38f, 0.53f, 1f), TextAlignmentOptions.Center).textWrappingMode = TextWrappingModes.Normal;
             CreateInputField(card, "Username Edit Input Field", "Enter your name");
 
             RectTransform buttonRow = CreateRect("Username Edit Button Row", card);

@@ -444,8 +444,8 @@ namespace ArrowGame
             OpenGameplayPurchasePopup(
                 GameplayPurchasePopupMode.HintOffer,
                 "Buying hints...",
-                $"Opening MiniPay to buy {gameplayHintPurchaseAmount} hints for {gameplayHintPriceLabel}.",
-                "Complete the payment in MiniPay to add hints instantly."
+                $"Opening to buy {gameplayHintPurchaseAmount} hints for {gameplayHintPriceLabel}.",
+                "Complete the payment to add hints instantly."
             );
             MiniPayBridge.Instance.BuyHints(gameplayHintPurchaseAmount);
         }

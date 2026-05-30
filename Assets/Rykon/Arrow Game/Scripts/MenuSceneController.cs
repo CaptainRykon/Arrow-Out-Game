@@ -86,7 +86,7 @@ namespace ArrowGame
         [SerializeField] private TextMeshProUGUI purchaseSuccessStatusText;
         [SerializeField] private string purchaseSuccessTitleLabel = "Payment Successful";
         [SerializeField] private string purchaseSuccessBodyLabel = "Welcome to Arrow Out. Enter your player name to continue.";
-        [SerializeField] private string purchaseSuccessStatusLabel = "Your name will be saved to MiniPay.";
+        [SerializeField] private string purchaseSuccessStatusLabel = "Your name will be saved.";
         [SerializeField] private int freeUnlockHintRewardCount =3;
 
         [Header("Unlock Reward")]
@@ -97,10 +97,10 @@ namespace ArrowGame
         [SerializeField] private Button hintRewardOkButton;
         [SerializeField] private string hintRewardTitleLabel = "Free Hints Unlocked";
         [SerializeField] private string hintRewardBodyLabel = "Congrats! You received 3 free hints with your unlock purchase.";
-        [SerializeField] private string hintRewardStatusLabel = "These hints are saved to your MiniPay account.";
+        [SerializeField] private string hintRewardStatusLabel = "These hints are saved to your account.";
         [SerializeField] private string hintPurchaseSuccessTitleLabel = "Hints Added";
         [SerializeField] private string hintPurchaseSuccessBodyLabel = "Your hint purchase was successful.";
-        [SerializeField] private string hintPurchaseSuccessStatusLabel = "The hints were added to your MiniPay game data.";
+        [SerializeField] private string hintPurchaseSuccessStatusLabel = "The hints were added to your game data.";
 
         [Header("Payment Failed")]
         [SerializeField] private GameObject paymentFailedPanel;
@@ -120,7 +120,7 @@ namespace ArrowGame
         [SerializeField] private TextMeshProUGUI userNameEditTitleText;
         [SerializeField] private TextMeshProUGUI userNameEditStatusText;
         [SerializeField] private string userNameEditTitleLabel = "Change Your Name";
-        [SerializeField] private string userNameEditStatusLabel = "Enter a new name and save it to your MiniPay profile.";
+        [SerializeField] private string userNameEditStatusLabel = "Enter a new name and save it to your profile.";
         [SerializeField] private Button vibrationToggleButton;
         [SerializeField] private Image vibrationToggleBackground;
         [SerializeField] private RectTransform vibrationToggleKnob;
@@ -397,7 +397,7 @@ namespace ArrowGame
         public void BuyHintsPackage()
         {
             ClosePaymentFailedPanel();
-            purchaseGateStatusOverride = "Opening MiniPay for your hint purchase...";
+            purchaseGateStatusOverride = "Opening for your hint purchase...";
             RefreshPurchaseGateUi();
             MiniPayBridge.Instance.BuyHints(hintPackageAmount);
         }
@@ -406,7 +406,7 @@ namespace ArrowGame
         {
             ClosePaymentFailedPanel();
             purchaseGateBusy = true;
-            purchaseGateStatusOverride = "Waiting for MiniPay confirmation...";
+            purchaseGateStatusOverride = "Waiting for confirmation...";
             RefreshPurchaseGateUi();
             MiniPayBridge.Instance.PurchaseGame();
         }
